@@ -1,0 +1,29 @@
+import 'dotenv/config';
+import 'reflect-metadata';
+import { Logger, ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { loadConfig } from './config';
+
+async function bootstrap() {
+  const config = loadConfig();
+  const app = await NestFactory.create(AppModule);
+  app.setGlobalPrefix('api');
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+  app.enableShutdownHooks();
+  await app.listen(config.port);
+
+  const logger = new Logger('Bootstrap');
+  logger.log(`API запущен: http://localhost:${config.port}/api`);
+  if (config.devTelegramId) {
+    logger.warn(`Режим разработки: запросы без Telegram идут от пользователя ${config.devTelegramId}`);
+  }
+}
+
+void bootstrap();

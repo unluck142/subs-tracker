@@ -1,0 +1,34 @@
+import { Controller, Get, Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
+import { TelegramAuthGuard } from './auth/telegram-auth.guard';
+import { BotService } from './bot/bot.service';
+import { CatalogController } from './catalog/catalog.controller';
+import { CatalogService } from './catalog/catalog.service';
+import { DbModule } from './db/db.module';
+import { RemindersService } from './reminders/reminders.service';
+import { SubscriptionsController } from './subscriptions/subscriptions.controller';
+import { SubscriptionsService } from './subscriptions/subscriptions.service';
+import { UsersController } from './users/users.controller';
+import { UsersService } from './users/users.service';
+
+@Controller('health')
+class HealthController {
+  @Get()
+  health() {
+    return { ok: true };
+  }
+}
+
+@Module({
+  imports: [DbModule, ScheduleModule.forRoot()],
+  controllers: [HealthController, UsersController, CatalogController, SubscriptionsController],
+  providers: [
+    TelegramAuthGuard,
+    UsersService,
+    CatalogService,
+    SubscriptionsService,
+    BotService,
+    RemindersService,
+  ],
+})
+export class AppModule {}
