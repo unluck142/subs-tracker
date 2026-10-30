@@ -17,7 +17,12 @@ async function bootstrap() {
     }),
   );
   app.enableShutdownHooks();
-  await app.listen(config.port);
+  // В production API доступен только локально: снаружи к нему ходит Next.js через /api/*
+  if (config.isProduction) {
+    await app.listen(config.port, '127.0.0.1');
+  } else {
+    await app.listen(config.port);
+  }
 
   const logger = new Logger('Bootstrap');
   logger.log(`API запущен: http://localhost:${config.port}/api`);
