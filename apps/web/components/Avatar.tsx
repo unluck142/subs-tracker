@@ -22,7 +22,8 @@ export default function Avatar({
   color?: string | null;
   size?: 'lg';
 }) {
-  const letter = name.trim().charAt(0).toUpperCase() || '?';
+  // Array.from — чтобы не разрезать эмодзи пополам
+  const letter = (Array.from(name.trim())[0] ?? '?').toUpperCase();
   const bg = color || colorFromName(name);
   return (
     <div

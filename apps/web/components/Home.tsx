@@ -82,6 +82,7 @@ export default function Home({
   onToggleCancelled,
   onOpen,
   onAdd,
+  onImport,
 }: {
   subs: Subscription[];
   stats: Stats;
@@ -89,6 +90,7 @@ export default function Home({
   onToggleCancelled: () => void;
   onOpen: (sub: Subscription) => void;
   onAdd: () => void;
+  onImport: () => void;
 }) {
   const active = subs.filter((s) => s.status === 'ACTIVE');
   const cancelled = subs.filter((s) => s.status === 'CANCELLED');
@@ -105,6 +107,9 @@ export default function Home({
         </p>
         <button className="btn" style={{ marginTop: 12 }} onClick={onAdd}>
           Добавить первую подписку
+        </button>
+        <button className="btn-plain" style={{ marginTop: 4 }} onClick={onImport}>
+          🏦 Найти подписки в выписке банка
         </button>
       </div>
     );

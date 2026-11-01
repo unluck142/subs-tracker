@@ -17,6 +17,8 @@ export interface CatalogItem {
   suggestedPriceKopecks: number | null;
   isPopular: boolean;
   hasCancelGuide: boolean;
+  /** Как сервис подписан в выписке банка — для импорта выписки (сопоставление идёт на устройстве) */
+  merchantPatterns: string[];
 }
 
 @Injectable()
@@ -85,7 +87,15 @@ function toItem(row: Service, avgPrice: number | null): CatalogItem {
     suggestedPriceKopecks: row.defaultPriceKopecks ?? avgPrice,
     isPopular: row.isPopular,
     hasCancelGuide: Boolean(row.cancelSteps || row.cancelUrl),
+    merchantPatterns: splitList(row.merchantPatterns),
   };
+}
+
+function splitList(value: string | null): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
 }
 
 function escapeLike(value: string): string {

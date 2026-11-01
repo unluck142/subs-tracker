@@ -75,6 +75,8 @@ export const services = pgTable(
     cancelSteps: text('cancel_steps'),
     // Синонимы для поиска: «кинопоиск, kinopoisk, кп»
     searchAliases: text('search_aliases'),
+    // Как сервис называется в выписке банка: «YANDEX*PLUS, ЯНДЕКС ПЛЮС». Нужно для импорта выписки.
+    merchantPatterns: text('merchant_patterns'),
     isPopular: boolean('is_popular').notNull().default(false),
     sortOrder: integer('sort_order').notNull().default(100),
   },

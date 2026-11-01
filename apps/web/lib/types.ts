@@ -32,6 +32,8 @@ export interface CatalogItem {
   suggestedPriceKopecks: number | null;
   isPopular: boolean;
   hasCancelGuide: boolean;
+  /** Как сервис подписан в выписке банка */
+  merchantPatterns: string[];
 }
 
 export interface Subscription {

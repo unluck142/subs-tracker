@@ -8,6 +8,13 @@
       "when": 1793310911235,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793574837011,
+      "tag": "0001_service_merchant_patterns",
+      "breakpoints": true
     }
   ]
 }

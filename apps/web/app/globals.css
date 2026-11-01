@@ -545,3 +545,68 @@ button {
   text-decoration: none;
   margin-top: 20px;
 }
+
+/* ——— Импорт выписки ——— */
+.check {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--hint);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+.check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+/* Разделитель начинается под аватаркой, а она сдвинута галочкой */
+.with-check .row + .row::before {
+  left: 104px;
+}
+.row.muted {
+  opacity: 0.55;
+}
+.row.muted:active {
+  background: none;
+}
+.guide {
+  position: relative;
+  padding: 0 16px;
+}
+.guide + .guide::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  border-top: 1px solid var(--sep);
+}
+.guide summary {
+  padding: 13px 0;
+  cursor: pointer;
+  font-weight: 550;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+}
+.guide summary::-webkit-details-marker {
+  display: none;
+}
+.guide summary::after {
+  content: '›';
+  color: var(--hint);
+  transition: transform 0.2s;
+}
+.guide[open] summary::after {
+  transform: rotate(90deg);
+}
+.guide p {
+  margin: 0 0 13px;
+  color: var(--hint);
+  font-size: 15px;
+}

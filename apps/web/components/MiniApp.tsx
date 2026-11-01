@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Home from '@/components/Home';
+import ImportStatement from '@/components/ImportStatement';
 import ServicePicker from '@/components/ServicePicker';
 import Settings, { TZ_MANUAL_KEY } from '@/components/Settings';
 import SubscriptionForm from '@/components/SubscriptionForm';
@@ -14,6 +15,7 @@ type View =
   | { name: 'picker' }
   | { name: 'create'; service: CatalogItem | null; initialName?: string }
   | { name: 'edit'; sub: Subscription }
+  | { name: 'import' }
   | { name: 'settings' };
 
 const TITLES: Record<View['name'], string> = {
@@ -21,6 +23,7 @@ const TITLES: Record<View['name'], string> = {
   picker: 'Новая подписка',
   create: 'Новая подписка',
   edit: 'Подписка',
+  import: 'Выписка банка',
   settings: 'Настройки',
 };
 
@@ -170,6 +173,7 @@ export default function MiniApp() {
             }}
             onOpen={(sub) => setView({ name: 'edit', sub })}
             onAdd={() => setView({ name: 'picker' })}
+            onImport={() => setView({ name: 'import' })}
           />
           {(stats.activeCount > 0 || subs.length > 0) && (
             <div className="bottom-bar">
@@ -185,6 +189,7 @@ export default function MiniApp() {
         <ServicePicker
           onPick={(service) => setView({ name: 'create', service })}
           onCustom={(name) => setView({ name: 'create', service: null, initialName: name })}
+          onImport={() => setView({ name: 'import' })}
         />
       )}
 
@@ -200,6 +205,14 @@ export default function MiniApp() {
 
       {view.name === 'edit' && (
         <SubscriptionForm key={`edit-${view.sub.id}`} mode="edit" sub={view.sub} onDone={afterChange} />
+      )}
+
+      {view.name === 'import' && (
+        <ImportStatement
+          existing={subs}
+          onDone={afterChange}
+          onManual={() => setView({ name: 'picker' })}
+        />
       )}
 
       {view.name === 'settings' && <Settings me={me} onSaved={setMe} />}

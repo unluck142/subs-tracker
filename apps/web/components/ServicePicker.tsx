@@ -9,9 +9,11 @@ import type { CatalogItem, Category } from '@/lib/types';
 export default function ServicePicker({
   onPick,
   onCustom,
+  onImport,
 }: {
   onPick: (service: CatalogItem) => void;
   onCustom: (name: string) => void;
+  onImport: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<CatalogItem[] | null>(null);
@@ -94,6 +96,15 @@ export default function ServicePicker({
           )}
 
           <div className="list" style={{ marginTop: 16 }}>
+            <button className="row" onClick={onImport}>
+              <Avatar name="🏦" color="var(--accent)" />
+              <div className="row-main">
+                <div className="row-title" style={{ color: 'var(--link)' }}>
+                  Найти в выписке банка
+                </div>
+                <div className="row-sub">Загрузи выписку — найду все подписки сам</div>
+              </div>
+            </button>
             <button className="row" onClick={() => onCustom('')}>
               <Avatar name="+" color="var(--accent)" />
               <div className="row-main">
