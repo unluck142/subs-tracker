@@ -79,11 +79,11 @@ const CARD_MASK = /\d{0,6}[\s]?\*{2,}[\s]?\d{4}|\*\d{4}/g;
 
 /** Строки-«шум»: шапки таблиц, колонтитулы, реквизиты банка */
 const NOISE_LINE =
-  /ДАТА ОПЕРАЦИИ|ДАТА ОБРАБОТКИ|КОД АВТОРИЗАЦИИ|ОСТАТОК|СТРАНИЦА|ПРОДОЛЖЕНИЕ|СУММА В ВАЛЮТЕ|ОПИСАНИЕ ОПЕРАЦИИ|ВЫПИСКА|ИТОГО|ЛИЦЕНЗИ|WWW\.|ДАТА СПИСАНИЯ|НОМЕР КАРТЫ|СПРАВКА|ВРЕМЯ ОПЕРАЦИИ|СУММА ОПЕРАЦИИ|ДВИЖЕНИ|ПОСТУПЛЕНИЯ/u;
+  /ДАТА ОПЕРАЦИИ|ДАТА ОБРАБОТКИ|КОД АВТОРИЗАЦИИ|ОСТАТОК|СТРАНИЦА|ПРОДОЛЖЕНИЕ|СУММА В ВАЛЮТЕ|ОПИСАНИЕ ОПЕРАЦИИ|ВЫПИСКА|ИТОГО|ЛИЦЕНЗИ|WWW\.|ДАТА СПИСАНИЯ|НОМЕР КАРТЫ|СПРАВКА|ВРЕМЯ ОПЕРАЦИИ|СУММА ОПЕРАЦИИ|ДВИЖЕНИ|ПОСТУПЛЕНИЯ|ДАТА ПРОВОДКИ|КОД ОПЕРАЦИИ|УПОЛНОМОЧЕННОЕ ЛИЦО|ПОДПИСЬ СОТРУДНИКА/u;
 
 /** Операции, которые точно не подписки */
 const NOT_SUBSCRIPTION =
-  /ПЕРЕВОД|ПОПОЛНЕНИЕ|СНЯТИЕ|НАЛИЧН|ЗАЧИСЛЕНИЕ|ВОЗВРАТ|ОТМЕНА|КЕШБЭК|КЭШБЭК|КЕШБЕК|КЭШБЕК|CASHBACK|ПРОЦЕНТ|ЗАРПЛАТ|ЗАРАБОТН|ПОГАШЕНИЕ|ATM|BANKOMAT|БАНКОМАТ|СБП|FAILED|ОТКЛОНЕН/u;
+  /ПЕРЕВОД|ПОПОЛНЕНИЕ|СНЯТИЕ|НАЛИЧН|ЗАЧИСЛЕНИЕ|ВОЗВРАТ|ОТМЕНА|КЕШБЭК|КЭШБЭК|КЕШБЕК|КЭШБЕК|CASHBACK|ПРОЦЕНТ|ЗАРПЛАТ|ЗАРАБОТН|ПОГАШЕНИЕ|ATM|BANKOMAT|БАНКОМАТ|СБП|FAILED|ОТКЛОНЕН|КОПИЛК|ПЕРЕЧИСЛЕНИЕ СРЕДСТВ/u;
 
 /** Слова, которые не говорят о продавце: «Оплата в YANDEX PLUS Moscow RUS» → «YANDEX PLUS» */
 const STOP_WORDS = new Set([
@@ -109,8 +109,40 @@ export function normalizeMerchant(text: string): string {
     .replace(/Ё/g, 'Е')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .split(' ')
-    .filter((t) => t && !STOP_WORDS.has(t) && !/^\d{4,}$/.test(t))
+    .filter((t) => t && !STOP_WORDS.has(t) && !/^\d{4,}$/.test(t) && !isOperationCode(t))
     .join(' ');
+}
+
+/** Коды операций и терминалов: «CRD_5ZV1K2» → «5ZV1K2», «C161305261912837», «MCC5411» */
+function isOperationCode(token: string): boolean {
+  return token.length >= 5 && /\p{L}/u.test(token) && /\d/.test(token);
+}
+
+/**
+ * Достаём из описания операции саму «точку продажи», без банковских оборотов:
+ * - Альфа: «Операция по карте: …, место совершения операции: 82083942\RU\MOSKVA\YANDEX 5815 PLUS MCC3990»
+ * - платежи: «Платеж … в пользу Билайн, +7961…», «Платеж … в REG.RU через Систему быстрых платежей»
+ */
+function merchantText(raw: string): string {
+  const place = raw.match(/место совершения операции:\s*(.*)$/i);
+  if (place) {
+    const segment = place[1].split('\\').pop() ?? place[1];
+    return segment.replace(/\s*MCC\d{4}.*$/i, '').replace(/\(AP-[^)]*\)/gi, ' ');
+  }
+  const favor = raw.match(/в пользу\s+([^,]+)/i);
+  if (favor) return favor[1];
+  const sbp = raw.match(/Платеж\s+(?:\S+\s+)?в\s+(.+?)\s+через Систему быстрых платежей/i);
+  if (sbp) return sbp[1];
+  return raw;
+}
+
+/** Альфа пишет дату проводки, а настоящая дата списания — «дата совершения операции: 08.05.26» */
+function operationDate(raw: string): string | null {
+  const m = raw.match(new RegExp(String.raw`дата совершения.{0,40}?операции:\s*${DATE_SRC}`, 'i'));
+  if (!m) return null;
+  const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+  const iso = `${year}-${m[2]}-${m[1]}`;
+  return isValidDate(iso) ? iso : null;
 }
 
 function cleanDisplayName(description: string): string {
@@ -122,7 +154,8 @@ function cleanDisplayName(description: string): string {
     .split(/\s+/)
     .filter((w) => w && !STOP_WORDS.has(w.toUpperCase().replace(/[^\p{L}\p{N}]/gu, '')) && !/^\d{4,}$/.test(w))
     .filter((w) => /[\p{L}\p{N}]/u.test(w));
-  const name = words.join(' ').trim();
+  const joined = words.join(' ').trim();
+  const name = joined.charAt(0).toUpperCase() + joined.slice(1);
   return name.length > 40 ? `${name.slice(0, 39)}…` : name || 'Подписка';
 }
 
@@ -224,11 +257,15 @@ export function parseTransactions(lines: string[]): Transaction[] {
       const text = stripDates(block.lines.join(' ')).replace(CARD_MASK, ' ');
       const money = findMoney(text);
       if (money.length === 0) return null;
-      // Если у сумм указана валюта — берём первую рублёвую (вторая колонка у Т-Банка — сумма в валюте карты)
-      const rub = money.find((t) => t.currency && /₽|РУБ|RUB|RUR/.test(t.currency));
-      const amount = rub ?? money[0];
-      const description = stripForDescription(block.lines.join(' '));
-      return { date: block.date, amount, description };
+      // Сумма со знаком — это колонка «Сумма»; без знака бывает сумма внутри описания
+      // («на сумму: 449.00 RUR» у Альфы). Среди них предпочитаем рублёвую:
+      // у Т-Банка первая колонка — сумма в валюте операции, вторая — в рублях.
+      const signed = money.filter((t) => t.sign);
+      const pool = signed.length > 0 ? signed : money;
+      const amount = pool.find((t) => t.currency && /₽|РУБ|RUB|RUR/.test(t.currency)) ?? pool[0];
+      const raw = block.lines.join(' ');
+      const description = stripForDescription(merchantText(raw));
+      return { date: operationDate(raw) ?? block.date, amount, raw: stripForDescription(raw), description };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null && x.amount.kopecks > 0);
 
@@ -238,7 +275,8 @@ export function parseTransactions(lines: string[]): Transaction[] {
   const minusMeansExpense = negatives >= Math.max(1, parsed.length * 0.2);
 
   return parsed.map((p) => {
-    const upper = p.description.toUpperCase().replace(/Ё/g, 'Е');
+    // «Перевод», «Возврат» ищем во всей строке операции, а не только в названии продавца
+    const upper = p.raw.toUpperCase().replace(/Ё/g, 'Е');
     const signExpense = minusMeansExpense ? p.amount.sign === '-' : p.amount.sign !== '+';
     return {
       date: p.date,
@@ -388,7 +426,9 @@ export function findCandidates(
 
     if (!(rule && strictEnough) && !service) continue;
 
-    const last = (rule ? cluster : unique)[(rule ? cluster : unique).length - 1];
+    // Цена — из группы одинаковых сумм, а не случайный последний платёж (пополнения связи бывают по 10 ₽)
+    const series = rule || consistent ? cluster : unique;
+    const last = series[series.length - 1];
     const unit = rule?.unit ?? service!.periodUnit;
     const count = rule?.count ?? service!.periodCount;
     const recurring = Boolean(rule && strictEnough);

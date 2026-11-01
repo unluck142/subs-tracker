@@ -181,6 +181,52 @@ describe('Т-Банк: CSV-выгрузка', () => {
   });
 });
 
+describe('Альфа-Банк: дата проводки, продавец в «месте совершения операции»', () => {
+  const card = (posted: string, code: string, amount: string, done: string, place: string, mcc = 'MCC3990') => [
+    `${posted} ${code} Операция по карте: 220015++++++1234, на сумму: ${amount.replace(/\s/g, '').replace(',', '.')} RUR, дата совершения -${amount} RUR`,
+    `операции: ${done}, место совершения операции: 82083942\\RU\\MOSKVA\\${place.split(' ')[0]}`,
+    `${place.split(' ').slice(1).join(' ')} ${mcc}`,
+  ];
+  const lines = [
+    'Дата проводки Код операции Описание Сумма',
+    ...card('09.08.2026', 'CRD_5ZV1K2', '449,00', '08.08.26', 'YANDEX 5815 PLUS'),
+    ...card('01.08.2026', 'CRD_7R7191', '150,00', '30.07.26', 'Vpn cozy bot', 'MCC5817'),
+    '15.08.2026 A011505260259168 Платеж A011505260259168 в пользу Билайн, +7900+++0000,15.08.2026,12-00-25 -400,00 RUR',
+    '16.08.2026 OP1ED268H004J1BS Перечисление средств в рамках услуги "Копилка для сдачи" со счета -15,80 RUR',
+    '17.08.2026 C170805260801587 Перевод C170805260801587 через Систему быстрых платежей от +79000000000. 300,00 RUR',
+    'Без НДС.',
+    'А.А. Иванов',
+    'Уполномоченное лицо',
+    ...card('01.09.2026', 'CRD_22Z8MW', '150,00', '30.08.26', 'Vpn cozy bot', 'MCC5817'),
+    ...card('02.10.2026', 'CRD_46W4AT', '150,00', '01.10.26', 'Vpn cozy bot', 'MCC5817'),
+    ...card('05.10.2026', 'CRD_8HF72R', '1 332,00', '04.10.26', 'YANDEX 5814 EDA'),
+  ];
+
+  it('берёт сумму со знаком, дату совершения и название продавца', () => {
+    const txs = parseTransactions(lines);
+    expect(txs).toHaveLength(8);
+    expect(txs[0]).toMatchObject({ date: '2026-08-08', amountKopecks: 44900, isExpense: true, key: 'YANDEX PLUS' });
+    expect(txs[1]).toMatchObject({ date: '2026-07-30', amountKopecks: 15000, key: 'VPN COZY BOT' });
+    expect(txs[2]).toMatchObject({ amountKopecks: 40000, isExpense: true, key: 'БИЛАЙН' });
+    // Копилка и входящий перевод — не подписки
+    expect(txs[3].isExpense).toBe(false);
+    expect(txs[4].isExpense).toBe(false);
+    expect(txs[7]).toMatchObject({ amountKopecks: 133200, key: 'YANDEX EDA' });
+  });
+
+  it('находит VPN по повторам и Плюс со связью по каталогу', () => {
+    const catalog = [...CATALOG, service(5, 'Билайн-связь', ['BEELINE', 'БИЛАЙН'])];
+    const { candidates } = analyzeStatement(lines, catalog, [], TODAY);
+    expect(candidates.map((c) => c.name).sort()).toEqual(['Vpn cozy bot', 'Билайн-связь', 'Яндекс Плюс']);
+    expect(candidates.find((c) => c.name === 'Vpn cozy bot')).toMatchObject({
+      priceKopecks: 15000,
+      occurrences: 3,
+      recurring: true,
+      nextChargeDate: '2026-12-01',
+    });
+  });
+});
+
 describe('ложные срабатывания', () => {
   it('магазин с разными суммами — не подписка, даже если две покупки совпали', () => {
     const lines = [
