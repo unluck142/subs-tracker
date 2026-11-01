@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Bot, Context, GrammyError, InlineKeyboard } from 'grammy';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 import { AppConfig, CONFIG } from '../config';
 import type { User } from '../db/schema';
 import { SubscriptionsService, SubscriptionView } from '../subscriptions/subscriptions.service';
@@ -36,7 +37,11 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       this.logger.warn('BOT_TOKEN не задан — бот и напоминания выключены, работает только API');
       return;
     }
-    this.bot = new Bot(this.config.botToken);
+    const proxy = this.config.telegramProxy;
+    this.bot = new Bot(this.config.botToken, {
+      client: proxy ? { baseFetchConfig: { agent: new SocksProxyAgent(proxy), compress: true } } : undefined,
+    });
+    if (proxy) this.logger.log(`Запросы к Telegram идут через прокси ${proxy}`);
     this.registerHandlers(this.bot);
     this.bot.catch((err) => this.logger.error(`Ошибка в обработчике бота: ${err.message}`, err.stack));
 

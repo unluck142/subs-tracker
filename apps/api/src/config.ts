@@ -6,6 +6,11 @@ export interface AppConfig {
   botToken: string | null;
   /** Публичный HTTPS-адрес мини-приложения, например https://ваш-домен.рф/app */
   webAppUrl: string | null;
+  /**
+   * SOCKS5-прокси для запросов к Telegram, например socks5://127.0.0.1:10808 (прокси Happ/v2rayN).
+   * Нужен, если Telegram с этого компьютера доступен только через VPN.
+   */
+  telegramProxy: string | null;
   /** Сколько секунд действительна авторизация из мини-приложения */
   initDataMaxAge: number;
   /**
@@ -27,6 +32,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseUrl: env.DATABASE_URL,
     botToken: env.BOT_TOKEN?.trim() || null,
     webAppUrl: env.WEBAPP_URL?.trim() || null,
+    telegramProxy: env.TELEGRAM_PROXY?.trim() || null,
     initDataMaxAge: Number(env.INIT_DATA_MAX_AGE) || 24 * 60 * 60,
     devTelegramId: !isProduction && devId > 0 ? devId : null,
     isProduction,
