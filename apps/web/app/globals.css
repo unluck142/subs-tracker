@@ -286,6 +286,13 @@ button {
   border-radius: 16px;
   font-size: 24px;
 }
+/* Логотип сервиса. Белая подложка — чтобы чёрные значки (ChatGPT) были видны в тёмной теме */
+.avatar.logo {
+  display: block;
+  background: #fff;
+  object-fit: cover;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
 
 .badge {
   display: inline-block;

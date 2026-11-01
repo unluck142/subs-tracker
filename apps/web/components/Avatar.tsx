@@ -1,4 +1,5 @@
 import { colorFromName } from '@/lib/format';
+import { LOGOS } from '@/lib/logos';
 
 /** На светлом фоне (жёлтый Т-Банка и т.п.) белая буква не читается — берём тёмную */
 function textColorFor(hex: string): string {
@@ -16,12 +17,18 @@ function textColorFor(hex: string): string {
 export default function Avatar({
   name,
   color,
+  slug,
   size,
 }: {
   name: string;
   color?: string | null;
+  /** slug сервиса из каталога — если для него есть логотип, показываем его вместо буквы */
+  slug?: string | null;
   size?: 'lg';
 }) {
+  if (slug && LOGOS.has(slug)) {
+    return <img className={`avatar logo${size ? ` ${size}` : ''}`} src={`/logos/${slug}.png`} alt="" aria-hidden />;
+  }
   // Array.from — чтобы не разрезать эмодзи пополам
   const letter = (Array.from(name.trim())[0] ?? '?').toUpperCase();
   const bg = color || colorFromName(name);

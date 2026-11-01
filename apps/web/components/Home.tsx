@@ -57,7 +57,7 @@ function SubRow({ sub, onOpen }: { sub: Subscription; onOpen: () => void }) {
   const soon = !cancelled && sub.daysLeft <= 2;
   return (
     <button className={`row${cancelled ? ' cancelled' : ''}`} onClick={onOpen}>
-      <Avatar name={sub.name} color={sub.color} />
+      <Avatar name={sub.name} color={sub.color} slug={sub.serviceSlug} />
       <div className="row-main">
         <div className="row-title">
           {sub.name}

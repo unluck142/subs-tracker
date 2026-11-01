@@ -1,0 +1,33 @@
+// Сгенерировано scripts/fetch-logos.mjs — не править руками.
+/** Сервисы каталога, для которых есть логотип в public/logos/<slug>.png */
+export const LOGOS = new Set<string>([
+  'alfa-smart',
+  'amediateka',
+  'boosty',
+  'chatgpt',
+  'cloud-mail',
+  'duolingo',
+  'icloud',
+  'ivi',
+  'kinopoisk',
+  'kion',
+  'litres',
+  'mts-premium',
+  'okko',
+  'ozon-premium',
+  'premier',
+  'ps-plus',
+  'sberprime',
+  'skyeng',
+  'start',
+  'tbank-pro',
+  'telegram-premium',
+  'vk-music',
+  'wink',
+  'x5-paket',
+  'xbox-game-pass',
+  'yandex-360',
+  'yandex-books',
+  'yandex-plus',
+  'zvuk'
+]);

@@ -115,7 +115,7 @@ export default function SubscriptionForm(props: Props) {
     <>
       <div className="card">
         <div className="form-head">
-          <Avatar name={form.name || '?'} color={color} size="lg" />
+          <Avatar name={form.name || '?'} color={color} slug={service?.slug ?? sub?.serviceSlug} size="lg" />
           <div style={{ flex: 1, minWidth: 0 }}>
             {isCustom ? (
               <input

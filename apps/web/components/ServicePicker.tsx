@@ -60,7 +60,7 @@ export default function ServicePicker({
         <div className="list">
           {items?.map((item) => (
             <button key={item.id} className="row" onClick={() => onPick(item)}>
-              <Avatar name={item.name} color={item.color} />
+              <Avatar name={item.name} color={item.color} slug={item.slug} />
               <div className="row-main">
                 <div className="row-title">{item.name}</div>
                 <div className="row-sub">{CATEGORY_LABELS[item.category]}</div>
@@ -87,7 +87,7 @@ export default function ServicePicker({
               <div className="chips">
                 {popular.map((item) => (
                   <button key={item.id} className="chip" onClick={() => onPick(item)}>
-                    <Avatar name={item.name} color={item.color} />
+                    <Avatar name={item.name} color={item.color} slug={item.slug} />
                     {item.name}
                   </button>
                 ))}
@@ -122,7 +122,7 @@ export default function ServicePicker({
               <div className="list">
                 {list.map((item) => (
                   <button key={item.id} className="row" onClick={() => onPick(item)}>
-                    <Avatar name={item.name} color={item.color} />
+                    <Avatar name={item.name} color={item.color} slug={item.slug} />
                     <div className="row-main">
                       <div className="row-title">{item.name}</div>
                     </div>

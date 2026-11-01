@@ -258,7 +258,7 @@ function CandidateRow({ candidate: c, checked, onToggle }: { candidate: Candidat
       <span className={`check${checked ? ' on' : ''}`} aria-hidden>
         {checked ? '✓' : ''}
       </span>
-      <Avatar name={c.name} color={c.service?.color} />
+      <Avatar name={c.name} color={c.service?.color} slug={c.service?.slug} />
       <div className="row-main">
         <div className="row-title">{c.name}</div>
         <div className="row-sub">{details}</div>
