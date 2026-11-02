@@ -47,7 +47,12 @@ WEBAPP_URL=https://$DOMAIN/app
 # Telegram ID владельцев бота через запятую: команда /stats и сообщения об ошибках
 ADMIN_TELEGRAM_IDS=
 EOF
-  echo "NEXT_PUBLIC_BOT_USERNAME=nespishut_bot" > "$APP_DIR/apps/web/.env.local"
+  cat > "$APP_DIR/apps/web/.env.local" <<'WEBENV'
+NEXT_PUBLIC_BOT_USERNAME=nespishut_bot
+# Для /privacy (152-ФЗ): оператор персональных данных и контакт для обращений
+NEXT_PUBLIC_OPERATOR_NAME=
+NEXT_PUBLIC_SUPPORT_CONTACT=
+WEBENV
   chown "$APP_USER:$APP_USER" "$ENV_FILE" "$APP_DIR/apps/web/.env.local"
   chmod 600 "$ENV_FILE"
 fi

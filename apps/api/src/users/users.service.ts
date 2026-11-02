@@ -79,6 +79,14 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Удалить пользователя и все его данные (/delete_me, 152-ФЗ).
+   * Подписки, участие в общих, оплаты и журнал напоминаний удаляются каскадом.
+   */
+  async deleteUser(userId: number): Promise<void> {
+    await this.db.delete(users).where(eq(users.id, userId));
+  }
+
   async markBotBlocked(userId: number, blocked: boolean): Promise<void> {
     await this.db.update(users).set({ botBlocked: blocked }).where(eq(users.id, userId));
   }

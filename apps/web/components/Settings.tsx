@@ -95,6 +95,12 @@ export default function Settings({ me, onSaved }: { me: Me; onSaved: (me: Me) =>
       <p className="hint" style={{ margin: '10px 16px' }}>
         Напоминания приходят в этот чат от бота. Если бот молчит — проверь, что не заблокировал его, и напиши ему /start.
       </p>
+      <p className="hint" style={{ margin: '10px 16px' }}>
+        <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: 'var(--link)' }}>
+          Политика конфиденциальности
+        </a>
+        {' · '}удалить все данные — команда /delete_me в боте
+      </p>
     </>
   );
 }

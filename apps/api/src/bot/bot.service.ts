@@ -33,6 +33,8 @@ import {
   alreadyTrackedText,
   askPriceText,
   cancelledText,
+  DELETED_TEXT,
+  deleteConfirmText,
   DRAFT_EXPIRED_TEXT,
   FOREIGN_CURRENCY_TEXT,
   memberAlreadyText,
@@ -44,6 +46,8 @@ import {
   joinStatusText,
   memberJoinedText,
   memberPaidText,
+  ONBOARDING_SMS_HINT,
+  ONBOARDING_TEXT_HINT,
   sharePaidText,
   shareReminderText,
   priceChangedText,
@@ -153,6 +157,28 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
+  /** Политика конфиденциальности лежит на том же домене, что и мини-приложение */
+  private privacyUrl(): string | null {
+    if (!this.config.webAppUrl) return null;
+    try {
+      return `${new URL(this.config.webAppUrl).origin}/privacy`;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Кнопки приветствия: сразу в приложение, к импорту выписки или подсказки, как добавить иначе */
+  private onboardingKeyboard(): InlineKeyboard {
+    const kb = new InlineKeyboard();
+    if (this.config.webAppUrl) {
+      const importUrl = new URL(this.config.webAppUrl);
+      importUrl.searchParams.set('screen', 'import');
+      kb.webApp('🏦 Найти подписки в выписке', importUrl.toString()).row();
+      kb.webApp('📱 Открыть приложение', this.config.webAppUrl).row();
+    }
+    return kb.text('✍️ Написать текстом', 'ob:text').text('📩 Переслать СМС', 'ob:sms');
+  }
+
   private openAppKeyboard(): InlineKeyboard | undefined {
     if (!this.config.webAppUrl) return undefined;
     return new InlineKeyboard().webApp('📱 Открыть подписки', this.config.webAppUrl);
@@ -183,10 +209,49 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       // Ссылка-приглашение в общую подписку: t.me/бот?start=join_<токен>
       const payload = typeof ctx.match === 'string' ? ctx.match : '';
       if (payload.startsWith('join_')) return this.showJoinOffer(ctx, user, payload.slice(5));
-      await ctx.reply(welcomeText(user.firstName, Boolean(this.config.webAppUrl)), {
+      await ctx.reply(welcomeText(user.firstName, Boolean(this.config.webAppUrl), this.privacyUrl()), {
         parse_mode: 'HTML',
-        reply_markup: this.openAppKeyboard(),
+        reply_markup: this.onboardingKeyboard(),
+        link_preview_options: { is_disabled: true },
       });
+    });
+
+    // Подсказки из приветствия: как добавить подписку текстом или пересылкой СМС
+    bot.callbackQuery(/^ob:(text|sms)$/, async (ctx) => {
+      await ctx.reply(ctx.match[1] === 'text' ? ONBOARDING_TEXT_HINT : ONBOARDING_SMS_HINT, { parse_mode: 'HTML' });
+      return ctx.answerCallbackQuery();
+    });
+
+    // Удалить все свои данные (152-ФЗ): /delete_me → подтверждение кнопкой
+    bot.command('delete_me', async (ctx) => {
+      const user = await this.userFromCtx(ctx);
+      if (!user) return;
+      const owned = await this.subs.list(user, { includeCancelled: true });
+      const shared = owned.filter((s) => s.role === 'owner' && s.sharing).length;
+      const own = owned.filter((s) => s.role === 'owner').length;
+      return ctx.reply(deleteConfirmText(own, shared), {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().text('🗑 Да, удалить всё', 'del:yes').text('Отмена', 'del:no'),
+      });
+    });
+    bot.callbackQuery(/^del:(yes|no)$/, async (ctx) => {
+      if (ctx.match[1] === 'no') {
+        await ctx.editMessageText('Ок, ничего не удаляю.');
+        return ctx.answerCallbackQuery();
+      }
+      // Здесь не вызываем userFromCtx после удаления — он бы создал пользователя заново
+      const user = ctx.from ? await this.users.findByTelegramId(ctx.from.id) : undefined;
+      if (user) {
+        // Участники общих подписок узнают, что подписка больше не общая
+        for (const sub of await this.subs.list(user)) {
+          if (sub.role === 'owner' && sub.sharing) {
+            await this.notifySharedEnded(sub.name, user, await this.sharing.memberUsers(sub.id), true);
+          }
+        }
+        await this.users.deleteUser(user.id);
+      }
+      await ctx.editMessageText(DELETED_TEXT);
+      return ctx.answerCallbackQuery();
     });
 
     // Присоединиться к общей подписке: j:<токен> / jno
@@ -558,7 +623,11 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
   private async send(user: User, text: string, keyboard: InlineKeyboard, what: string): Promise<SendResult> {
     if (!this.bot) return 'failed';
     try {
-      await this.bot.api.sendMessage(user.telegramId, text, { parse_mode: 'HTML', reply_markup: keyboard });
+      await this.bot.api.sendMessage(user.telegramId, text, {
+        parse_mode: 'HTML',
+        // Пустую клавиатуру (у простых уведомлений) не отправляем совсем
+        reply_markup: keyboard.inline_keyboard.some((row) => row.length > 0) ? keyboard : undefined,
+      });
       return 'sent';
     } catch (e) {
       // 403 — пользователь заблокировал бота

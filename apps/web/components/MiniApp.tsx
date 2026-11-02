@@ -92,6 +92,8 @@ export default function MiniApp() {
         return;
       }
       await load(false);
+      // Кнопка «Найти подписки в выписке» из приветствия бота открывает сразу импорт
+      if (new URLSearchParams(window.location.search).get('screen') === 'import') setView({ name: 'import' });
     })();
 
     return () => app?.offEvent('themeChanged', applyTheme);

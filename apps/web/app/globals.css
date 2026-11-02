@@ -670,3 +670,30 @@ button {
 .paid-toggle.on {
   color: var(--hint);
 }
+
+/* ——— Текстовые страницы: политика, «как отменить» ——— */
+.article {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+  line-height: 1.55;
+}
+.article h1 {
+  font-size: 28px;
+  line-height: 1.25;
+  margin: 8px 0 6px;
+}
+.article h2 {
+  font-size: 20px;
+  margin: 28px 0 8px;
+}
+.article a {
+  color: var(--link);
+}
+.article ul,
+.article ol {
+  padding-left: 22px;
+}
+.article li + li {
+  margin-top: 6px;
+}
