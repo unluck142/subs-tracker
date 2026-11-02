@@ -1,9 +1,20 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { diffDays, parts, rollForward, todayInTz } from '../common/dates';
 import { monthlyKopecks } from '../common/money';
 import { DB, Db } from '../db/db.module';
-import { Category, Service, Subscription, subscriptions, User } from '../db/schema';
+import {
+  Category,
+  memberPayments,
+  Service,
+  services,
+  Subscription,
+  subscriptionMembers,
+  subscriptions,
+  User,
+  users,
+} from '../db/schema';
+import { displayName, shareKopecks } from '../sharing/sharing.logic';
 import { findOverlaps, Overlap } from './bundles';
 import { CreateSubscriptionDto, UpdateSubscriptionDto } from './dto';
 
@@ -29,6 +40,24 @@ export interface SubscriptionView {
   hasCancelGuide: boolean;
   /** Название подписки, в которую эта уже входит (или дубль которой она) — можно не платить дважды */
   includedIn: string | null;
+  /** owner — своя подписка, member — участвует в чужой общей */
+  role: 'owner' | 'member';
+  /** Общая подписка: делится между несколькими людьми */
+  sharing: SharingInfo | null;
+}
+
+export interface SharingInfo {
+  /** Участников, не считая владельца */
+  membersCount: number;
+  /** Доля одного человека за одно списание */
+  shareKopecks: number;
+  /** Для участника: кто платит сервису и кому переводить */
+  ownerName: string | null;
+  ownerUsername: string | null;
+  /** Для владельца: сколько участников уже перевели за ближайшее списание */
+  paidCount: number;
+  /** Для участника: перевёл ли он за ближайшее списание */
+  paid: boolean;
 }
 
 export interface Stats {
@@ -64,7 +93,8 @@ export class SubscriptionsService {
     });
     const today = todayInTz(user.timezone);
     const fresh = await this.rollStale(rows, today);
-    const views = fresh.map((s) => this.toView(s, today));
+    const owned = await this.withOwnerSharing(fresh.map((s) => this.toView(s, today)));
+    const views = [...owned, ...(await this.memberViews(user, today))];
     const covered = new Map(findOverlaps(views).map((o) => [o.subscriptionId, o.coveredByName]));
     return views
       .map((v) => ({ ...v, includedIn: covered.get(v.id) ?? null }))
@@ -75,7 +105,91 @@ export class SubscriptionsService {
     const sub = await this.findOwned(user.id, id);
     const today = todayInTz(user.timezone);
     const [fresh] = await this.rollStale([sub], today);
-    return this.toView(fresh, today);
+    const [view] = await this.withOwnerSharing([this.toView(fresh, today)]);
+    return view;
+  }
+
+  /** Участники и оплаты по подпискам: id подписки → участники (id записи) и кто перевёл за ближайшее списание */
+  private async sharingState(subs: { id: number; nextChargeDate: string }[]) {
+    const result = new Map<number, { memberIds: number[]; paidMemberIds: Set<number> }>();
+    if (subs.length === 0) return result;
+    const members = await this.db
+      .select({ id: subscriptionMembers.id, subscriptionId: subscriptionMembers.subscriptionId })
+      .from(subscriptionMembers)
+      .where(inArray(subscriptionMembers.subscriptionId, subs.map((s) => s.id)));
+    if (members.length === 0) return result;
+    const payments = await this.db
+      .select({ memberId: memberPayments.memberId, chargeDate: memberPayments.chargeDate })
+      .from(memberPayments)
+      .where(inArray(memberPayments.memberId, members.map((m) => m.id)));
+    const dateBySub = new Map(subs.map((s) => [s.id, s.nextChargeDate]));
+    for (const m of members) {
+      const entry = result.get(m.subscriptionId) ?? { memberIds: [], paidMemberIds: new Set<number>() };
+      entry.memberIds.push(m.id);
+      if (payments.some((p) => p.memberId === m.id && p.chargeDate === dateBySub.get(m.subscriptionId))) {
+        entry.paidMemberIds.add(m.id);
+      }
+      result.set(m.subscriptionId, entry);
+    }
+    return result;
+  }
+
+  /** Свои подписки, которыми пользователь делится: считаем его долю */
+  private async withOwnerSharing(views: SubscriptionView[]): Promise<SubscriptionView[]> {
+    const state = await this.sharingState(views);
+    return views.map((v) => {
+      const st = state.get(v.id);
+      if (!st) return v;
+      return this.applyShare(v, {
+        membersCount: st.memberIds.length,
+        shareKopecks: shareKopecks(v.priceKopecks, st.memberIds.length),
+        ownerName: null,
+        ownerUsername: null,
+        paidCount: st.paidMemberIds.size,
+        paid: true,
+      });
+    });
+  }
+
+  /** Чужие общие подписки, в которых пользователь участвует */
+  private async memberViews(user: User, today: string): Promise<SubscriptionView[]> {
+    const rows = await this.db
+      .select({ memberId: subscriptionMembers.id, sub: subscriptions, owner: users, service: services })
+      .from(subscriptionMembers)
+      .innerJoin(subscriptions, eq(subscriptions.id, subscriptionMembers.subscriptionId))
+      .innerJoin(users, eq(users.id, subscriptions.userId))
+      .leftJoin(services, eq(services.id, subscriptions.serviceId))
+      .where(and(eq(subscriptionMembers.userId, user.id), eq(subscriptions.status, 'ACTIVE')));
+    if (rows.length === 0) return [];
+    const fresh = await this.rollStale(
+      rows.map((r) => ({ ...r.sub, service: r.service })),
+      today,
+    );
+    const state = await this.sharingState(fresh);
+    return fresh.map((sub, i) => {
+      const { memberId, owner } = rows[i];
+      const st = state.get(sub.id)!;
+      return this.applyShare(
+        { ...this.toView(sub, today), role: 'member' as const },
+        {
+          membersCount: st.memberIds.length,
+          shareKopecks: shareKopecks(sub.priceKopecks, st.memberIds.length),
+          ownerName: displayName(owner),
+          ownerUsername: owner.username,
+          paidCount: st.paidMemberIds.size,
+          paid: st.paidMemberIds.has(memberId),
+        },
+      );
+    });
+  }
+
+  /** В итогах «в месяц» у общей подписки учитываем только свою долю */
+  private applyShare(view: SubscriptionView, sharing: SharingInfo): SubscriptionView {
+    return {
+      ...view,
+      sharing,
+      monthlyKopecks: Math.round(monthlyKopecks(sharing.shareKopecks, view.periodUnit, view.periodCount)),
+    };
   }
 
   async create(user: User, dto: CreateSubscriptionDto): Promise<SubscriptionView> {
@@ -166,7 +280,9 @@ export class SubscriptionsService {
       activeCount: active.length,
       monthlyKopecks: Math.round(monthly),
       yearlyKopecks: Math.round(monthly * 12),
-      next7DaysKopecks: active.filter((s) => s.daysLeft <= 7).reduce((sum, s) => sum + s.priceKopecks, 0),
+      next7DaysKopecks: active
+        .filter((s) => s.daysLeft <= 7)
+        .reduce((sum, s) => sum + (s.sharing?.shareKopecks ?? s.priceKopecks), 0),
       byCategory: [...byCategory.entries()]
         .map(([category, v]) => ({ category, monthlyKopecks: Math.round(v.monthlyKopecks), count: v.count }))
         .sort((a, b) => b.monthlyKopecks - a.monthlyKopecks),
@@ -251,6 +367,8 @@ export class SubscriptionsService {
       status: sub.status,
       hasCancelGuide: Boolean(sub.service?.cancelSteps || sub.service?.cancelUrl),
       includedIn: null,
+      role: 'owner',
+      sharing: null,
     };
   }
 }

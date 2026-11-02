@@ -52,6 +52,8 @@ describe('тексты бота', () => {
     status: 'ACTIVE',
     hasCancelGuide: false,
     includedIn: null,
+    role: 'owner',
+    sharing: null,
   };
 
   it('пишет понятное напоминание и экранирует HTML', () => {

@@ -62,6 +62,12 @@ export function reminderText(sub: SubscriptionView): string {
     sub.includedIn
       ? `💡 Похоже, ${name} уже входит в «${escapeHtml(sub.includedIn)}» — проверь свой тариф, возможно, платишь дважды.`
       : 'Пользуешься? Если нет — отмени, пока не списали.',
+    ...(sub.sharing && sub.role === 'owner'
+      ? [
+          '',
+          `👥 Общая подписка: доля каждого ${formatRub(sub.sharing.shareKopecks)}, скинулись ${sub.sharing.paidCount} из ${sub.sharing.membersCount}. Остальным я напомню.`,
+        ]
+      : []),
   ].join('\n');
 }
 
@@ -228,7 +234,7 @@ export function reviewText(sub: SubscriptionView): string {
   return [
     '🔍 <b>Ревизия подписок</b>',
     '',
-    `Ты пользовался <b>${escapeHtml(sub.name)}</b> в последний месяц?`,
+    `Пользуешься <b>${escapeHtml(sub.name)}</b>? Если за последний месяц ни разу — её стоит отменить.`,
     `Она стоит ${formatRub(sub.priceKopecks)} ${periodLabel(sub.periodUnit, sub.periodCount)} — это <b>${formatRub(yearlyKopecks(sub))} в год</b>.`,
   ].join('\n');
 }
@@ -247,4 +253,77 @@ export function reviewUnusedText(sub: SubscriptionView): string {
 
 export function reviewMutedText(sub: SubscriptionView): string {
   return `🔕 Хорошо, про «${escapeHtml(sub.name)}» больше не спрашиваю. Выключить такие вопросы совсем можно в настройках приложения.`;
+}
+
+// ─── Общие подписки ─────────────────────────────────────────────────────────
+
+interface SharedInfoText {
+  name: string;
+  priceKopecks: number;
+  periodUnit: SubscriptionView['periodUnit'];
+  periodCount: number;
+}
+
+function ownerContact(name: string, username: string | null): string {
+  return username ? `${escapeHtml(name)} (@${escapeHtml(username)})` : escapeHtml(name);
+}
+
+export function joinOfferText(ownerName: string, info: SharedInfoText, peopleAfterJoin: number, share: number): string {
+  return [
+    `👥 <b>${escapeHtml(ownerName)}</b> приглашает тебя в общую подписку <b>«${escapeHtml(info.name)}»</b> — ${formatRub(info.priceKopecks)} ${periodLabel(info.periodUnit, info.periodCount)}.`,
+    '',
+    `Вас будет ${peopleAfterJoin}, доля каждого — <b>${formatRub(share)}</b>.`,
+    'Перед каждым списанием я напомню перевести свою долю.',
+  ].join('\n');
+}
+
+export function joinedText(info: SharedInfoText, ownerName: string, ownerUsername: string | null, share: number): string {
+  return [
+    `✅ Готово! Ты в общей подписке «${escapeHtml(info.name)}».`,
+    '',
+    `Перед каждым списанием напомню перевести <b>${formatRub(share)}</b>. Кому: ${ownerContact(ownerName, ownerUsername)}.`,
+  ].join('\n');
+}
+
+export function memberJoinedText(memberName: string, info: SharedInfoText, people: number, share: number): string {
+  return `👥 В «${escapeHtml(info.name)}» новый участник: ${escapeHtml(memberName)}. Теперь вас ${people}, доля каждого — ${formatRub(share)}.`;
+}
+
+export function joinStatusText(status: 'owner' | 'already' | 'full' | 'not-found', name?: string): string {
+  const n = name ? `«${escapeHtml(name)}»` : 'подписку';
+  switch (status) {
+    case 'owner':
+      return `Это твоя подписка 🙂 Отправь ссылку тем, с кем делишь ${n}.`;
+    case 'already':
+      return `Ты уже участвуешь в ${n}. Напомню, когда нужно будет скинуться.`;
+    case 'full':
+      return `В ${n} уже максимальное число участников.`;
+    case 'not-found':
+      return 'Приглашение не найдено — возможно, подписку отменили или ссылка устарела. Попроси новую.';
+  }
+}
+
+export function shareReminderText(sub: SubscriptionView): string {
+  const s = sub.sharing!;
+  const when = inDaysLabel(sub.daysLeft);
+  return [
+    `👥 ${capitalize(when)} спишут за общую подписку «${escapeHtml(sub.name)}».`,
+    '',
+    `Твоя доля — <b>${formatRub(s.shareKopecks)}</b>. Кому перевести: ${ownerContact(s.ownerName ?? 'владельцу подписки', s.ownerUsername)}.`,
+    'Как переведёшь — нажми кнопку, и я сообщу.',
+  ].join('\n');
+}
+
+export function sharePaidText(share: number, ownerName: string): string {
+  return `✅ Отметил перевод ${formatRub(share)}. ${escapeHtml(ownerName)} получит уведомление.`;
+}
+
+export function memberPaidText(memberName: string, name: string, share: number): string {
+  return `💸 ${escapeHtml(memberName)}: перевод ${formatRub(share)} за «${escapeHtml(name)}» ✅`;
+}
+
+export function memberLeftText(memberName: string, name: string, removedByOwner: boolean): string {
+  return removedByOwner
+    ? `Тебя исключили из общей подписки «${escapeHtml(name)}». Напоминаний о ней больше не будет.`
+    : `👋 ${escapeHtml(memberName)} больше не участвует в общей подписке «${escapeHtml(name)}».`;
 }

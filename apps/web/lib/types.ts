@@ -57,6 +57,36 @@ export interface Subscription {
   hasCancelGuide: boolean;
   /** В какую подписку эта уже входит (или дубль которой она) */
   includedIn: string | null;
+  /** owner — своя, member — участвую в чужой общей подписке */
+  role: 'owner' | 'member';
+  sharing: SharingInfo | null;
+}
+
+export interface SharingInfo {
+  /** Участников, не считая владельца */
+  membersCount: number;
+  /** Доля одного человека за одно списание */
+  shareKopecks: number;
+  ownerName: string | null;
+  ownerUsername: string | null;
+  /** Для владельца: сколько участников перевели за ближайшее списание */
+  paidCount: number;
+  /** Для участника: перевёл ли он */
+  paid: boolean;
+}
+
+export interface Member {
+  memberId: number;
+  name: string;
+  username: string | null;
+  paid: boolean;
+  isMe: boolean;
+}
+
+export interface MembersInfo {
+  owner: string;
+  shareKopecks: number;
+  members: Member[];
 }
 
 export interface Overlap {

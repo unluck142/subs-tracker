@@ -91,14 +91,17 @@ function SubRow({ sub, onOpen }: { sub: Subscription; onOpen: () => void }) {
         <div className="row-title">
           {sub.name}
           {sub.isTrial && !cancelled && <span className="badge">пробный</span>}
+          {sub.sharing && !cancelled && <span className="badge">👥 {sub.sharing.membersCount + 1}</span>}
         </div>
         <div className={`row-sub${soon ? ' soon' : ''}`}>
           {cancelled ? 'отменена' : `${inDays(sub.daysLeft)} · ${shortDate(sub.nextChargeDate)}`}
+          {sub.role === 'member' && sub.sharing && !sub.sharing.paid && ' · скинуться'}
         </div>
       </div>
       <div className="row-price">
-        {formatRub(sub.priceKopecks)}
-        <small>{periodShort(sub.periodUnit, sub.periodCount)}</small>
+        {/* У общей подписки показываем свою долю — её и учитываем в итогах */}
+        {formatRub(sub.sharing?.shareKopecks ?? sub.priceKopecks)}
+        <small>{sub.sharing ? `из ${formatRub(sub.priceKopecks)}` : periodShort(sub.periodUnit, sub.periodCount)}</small>
       </div>
     </button>
   );

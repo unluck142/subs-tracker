@@ -4,7 +4,7 @@ import { and, eq, isNull, lt, lte, or } from 'drizzle-orm';
 import { BotService } from '../bot/bot.service';
 import { addDays, hourInTz, todayInTz } from '../common/dates';
 import { DB, Db } from '../db/db.module';
-import { reminderLogs, services, Subscription, subscriptions, users } from '../db/schema';
+import { reminderLogs, services, Subscription, subscriptionMembers, subscriptions, users } from '../db/schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { isReminderDue } from './reminders.logic';
 import { isUserReviewDue, pickForReview, REVIEW_EVERY_DAYS } from './review.logic';
@@ -154,7 +154,7 @@ export class RemindersService {
       // даже если два экземпляра приложения запустят рассылку одновременно
       const reserved = await this.db
         .insert(reminderLogs)
-        .values({ subscriptionId: fresh.id, chargeDate: fresh.nextChargeDate })
+        .values({ subscriptionId: fresh.id, chargeDate: fresh.nextChargeDate, userId: user.id })
         .onConflictDoNothing()
         .returning({ id: reminderLogs.id });
       if (reserved.length === 0) continue;
@@ -170,6 +170,50 @@ export class RemindersService {
           // Сетевая ошибка — снимаем бронь, попробуем в следующий раз
           await this.db.delete(reminderLogs).where(eq(reminderLogs.id, reserved[0].id));
         }
+      }
+    }
+
+    // Участникам общих подписок: «скинься за Яндекс Плюс». Даты уже сдвинуты циклом выше.
+    const memberRows = await this.db
+      .select({ sub: subscriptions, user: users })
+      .from(subscriptionMembers)
+      .innerJoin(subscriptions, eq(subscriptions.id, subscriptionMembers.subscriptionId))
+      .innerJoin(users, eq(users.id, subscriptionMembers.userId))
+      .where(
+        and(
+          eq(subscriptions.status, 'ACTIVE'),
+          eq(subscriptions.isTrial, false),
+          eq(users.botBlocked, false),
+          lte(subscriptions.nextChargeDate, horizon),
+        ),
+      );
+    for (const { sub, user } of memberRows) {
+      const today = todayInTz(user.timezone, now);
+      const due = isReminderDue({
+        nextChargeDate: sub.nextChargeDate,
+        remindDaysBefore: sub.remindDaysBefore,
+        today,
+        localHour: hourInTz(user.timezone, now),
+        reminderHour: user.reminderHour,
+      });
+      if (!due) continue;
+      const view = (await this.subs.list(user)).find((v) => v.id === sub.id && v.role === 'member');
+      // Уже перевёл заранее — не напоминаем
+      if (!view?.sharing || view.sharing.paid) continue;
+
+      const reserved = await this.db
+        .insert(reminderLogs)
+        .values({ subscriptionId: sub.id, chargeDate: view.nextChargeDate, userId: user.id })
+        .onConflictDoNothing()
+        .returning({ id: reminderLogs.id });
+      if (reserved.length === 0) continue;
+
+      const result = await this.bot.sendShareReminder(user, view);
+      if (result === 'sent') {
+        sent++;
+      } else {
+        failed++;
+        if (result === 'failed') await this.db.delete(reminderLogs).where(eq(reminderLogs.id, reserved[0].id));
       }
     }
     return { sent, failed };

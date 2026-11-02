@@ -5,6 +5,8 @@ import { CatalogService } from '../catalog/catalog.service';
 import { todayInTz } from '../common/dates';
 import { AppConfig, CONFIG } from '../config';
 import type { User } from '../db/schema';
+import { SharingService } from '../sharing/sharing.service';
+import { displayName, shareKopecks } from '../sharing/sharing.logic';
 import { overlapHint } from '../subscriptions/bundles';
 import { SubscriptionsService, SubscriptionView } from '../subscriptions/subscriptions.service';
 import { UsersService } from '../users/users.service';
@@ -18,6 +20,13 @@ import {
   DRAFT_EXPIRED_TEXT,
   draftText,
   HELP_TEXT,
+  joinedText,
+  joinOfferText,
+  joinStatusText,
+  memberJoinedText,
+  memberPaidText,
+  sharePaidText,
+  shareReminderText,
   priceChangedText,
   priceUpdatedText,
   reviewMutedText,
@@ -45,6 +54,7 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     private readonly users: UsersService,
     private readonly subs: SubscriptionsService,
     private readonly catalog: CatalogService,
+    private readonly sharing: SharingService,
   ) {}
 
   get enabled(): boolean {
@@ -116,10 +126,55 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     bot.command('start', async (ctx) => {
       if (!ctx.from) return;
       const user = await this.users.upsertFromTelegram(ctx.from, { unblock: true });
+      // Ссылка-приглашение в общую подписку: t.me/бот?start=join_<токен>
+      const payload = typeof ctx.match === 'string' ? ctx.match : '';
+      if (payload.startsWith('join_')) return this.showJoinOffer(ctx, user, payload.slice(5));
       await ctx.reply(welcomeText(user.firstName, Boolean(this.config.webAppUrl)), {
         parse_mode: 'HTML',
         reply_markup: this.openAppKeyboard(),
       });
+    });
+
+    // Присоединиться к общей подписке: j:<токен> / jno
+    bot.callbackQuery(/^j:([\w-]+)$/, async (ctx) => {
+      const user = await this.userFromCtx(ctx);
+      if (!user) return ctx.answerCallbackQuery();
+      const result = await this.sharing.join(user, ctx.match[1]);
+      if (result.status !== 'joined') {
+        const name = result.status === 'not-found' ? undefined : result.info.name;
+        await ctx.editMessageText(joinStatusText(result.status, name), { parse_mode: 'HTML' });
+        return ctx.answerCallbackQuery();
+      }
+      const { info } = result;
+      const share = shareKopecks(info.priceKopecks, info.membersCount);
+      await ctx.editMessageText(joinedText(info, displayName(info.owner), info.owner.username, share), {
+        parse_mode: 'HTML',
+        reply_markup: this.openAppKeyboard(),
+      });
+      await this.notify(info.owner, memberJoinedText(displayName(user), info, info.membersCount + 1, share));
+      return ctx.answerCallbackQuery({ text: 'Готово 👥' });
+    });
+    bot.callbackQuery('jno', async (ctx) => {
+      await ctx.editMessageText('Ок, не присоединяюсь. Если передумаешь — открой ссылку ещё раз.');
+      return ctx.answerCallbackQuery();
+    });
+
+    // Участник перевёл свою долю: sp:<id подписки>
+    bot.callbackQuery(/^sp:(\d+)$/, async (ctx) => {
+      const user = await this.userFromCtx(ctx);
+      if (!user) return ctx.answerCallbackQuery();
+      const subscriptionId = Number(ctx.match[1]);
+      const member = await this.sharing.findMember(subscriptionId, user.id);
+      if (!member) {
+        await ctx.editMessageText('Ты больше не участвуешь в этой подписке.').catch(() => undefined);
+        return ctx.answerCallbackQuery();
+      }
+      const change = await this.sharing.setPaid(user, subscriptionId, member.id, true);
+      await ctx.editMessageText(sharePaidText(change.shareKopecks, displayName(change.info.owner)), {
+        parse_mode: 'HTML',
+      });
+      await this.notify(change.info.owner, memberPaidText(displayName(user), change.info.name, change.shareKopecks));
+      return ctx.answerCallbackQuery({ text: 'Отметил ✅' });
     });
 
     bot.command('help', (ctx) => ctx.reply(HELP_TEXT, { parse_mode: 'HTML' }));
@@ -310,6 +365,33 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
   private async userFromCtx(ctx: Context): Promise<User | null> {
     if (!ctx.from) return null;
     return this.users.upsertFromTelegram(ctx.from);
+  }
+
+  private async showJoinOffer(ctx: Context, user: User, token: string) {
+    const info = await this.sharing.infoByToken(token);
+    if (!info) return ctx.reply(joinStatusText('not-found'), { parse_mode: 'HTML' });
+    if (info.owner.id === user.id) return ctx.reply(joinStatusText('owner', info.name), { parse_mode: 'HTML' });
+    if (await this.sharing.findMember(info.subscriptionId, user.id)) {
+      return ctx.reply(joinStatusText('already', info.name), { parse_mode: 'HTML' });
+    }
+    const share = shareKopecks(info.priceKopecks, info.membersCount + 1);
+    return ctx.reply(joinOfferText(displayName(info.owner), info, info.membersCount + 2, share), {
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard().text('✅ Присоединиться', `j:${token}`).text('Не сейчас', 'jno'),
+    });
+  }
+
+  /** Короткое уведомление без кнопок (участник присоединился, перевёл долю…) */
+  async notify(user: User, text: string): Promise<void> {
+    if (!this.bot || user.botBlocked) return;
+    await this.send(user, text, new InlineKeyboard(), 'уведомление');
+  }
+
+  /** Участнику общей подписки: «скинься за Яндекс Плюс» */
+  async sendShareReminder(user: User, sub: SubscriptionView): Promise<SendResult> {
+    const keyboard = new InlineKeyboard().text('✅ Перевёл', `sp:${sub.id}`);
+    if (this.config.webAppUrl) keyboard.row().webApp('📱 Подписки', this.config.webAppUrl);
+    return this.send(user, shareReminderText(sub), keyboard, `напоминание участнику ${sub.id}`);
   }
 
   /** Спросить, пользуется ли он подпиской */

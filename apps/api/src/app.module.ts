@@ -6,6 +6,8 @@ import { CatalogController } from './catalog/catalog.controller';
 import { CatalogService } from './catalog/catalog.service';
 import { DbModule } from './db/db.module';
 import { RemindersService } from './reminders/reminders.service';
+import { SharingController } from './sharing/sharing.controller';
+import { SharingService } from './sharing/sharing.service';
 import { SubscriptionsController } from './subscriptions/subscriptions.controller';
 import { SubscriptionsService } from './subscriptions/subscriptions.service';
 import { UsersController } from './users/users.controller';
@@ -21,12 +23,13 @@ class HealthController {
 
 @Module({
   imports: [DbModule, ScheduleModule.forRoot()],
-  controllers: [HealthController, UsersController, CatalogController, SubscriptionsController],
+  controllers: [HealthController, UsersController, CatalogController, SubscriptionsController, SharingController],
   providers: [
     TelegramAuthGuard,
     UsersService,
     CatalogService,
     SubscriptionsService,
+    SharingService,
     BotService,
     RemindersService,
   ],

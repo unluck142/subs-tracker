@@ -1,5 +1,5 @@
 import { initData } from './telegram';
-import type { CatalogItem, Me, Stats, Subscription, SubscriptionInput } from './types';
+import type { CatalogItem, Me, MembersInfo, Stats, Subscription, SubscriptionInput } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -42,4 +42,15 @@ export const api = {
   cancel: (id: number) => request<Subscription>(`/subscriptions/${id}/cancel`, { method: 'POST' }),
   restore: (id: number) => request<Subscription>(`/subscriptions/${id}/restore`, { method: 'POST' }),
   remove: (id: number) => request<void>(`/subscriptions/${id}`, { method: 'DELETE' }),
+
+  // Общие подписки
+  invite: (id: number) => request<{ token: string }>(`/subscriptions/${id}/invite`, { method: 'POST' }),
+  members: (id: number) => request<MembersInfo>(`/subscriptions/${id}/members`),
+  setPaid: (id: number, memberId: number, paid: boolean) =>
+    request<MembersInfo>(`/subscriptions/${id}/members/${memberId}/paid`, {
+      method: 'POST',
+      body: JSON.stringify({ paid }),
+    }),
+  removeMember: (id: number, memberId: number) =>
+    request<void>(`/subscriptions/${id}/members/${memberId}`, { method: 'DELETE' }),
 };

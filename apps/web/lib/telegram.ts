@@ -10,6 +10,7 @@ interface TelegramWebApp {
   ready(): void;
   expand(): void;
   showConfirm(message: string, callback: (ok: boolean) => void): void;
+  openTelegramLink(url: string): void;
   BackButton: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
   HapticFeedback?: {
     notificationOccurred(type: 'error' | 'success' | 'warning'): void;
@@ -47,6 +48,21 @@ export function confirmAction(message: string): Promise<boolean> {
   const app = webApp();
   if (app) return new Promise((resolve) => app.showConfirm(message, resolve));
   return Promise.resolve(window.confirm(message));
+}
+
+/** Поделиться ссылкой: в Telegram — стандартное окно «Переслать», в браузере — копируем в буфер */
+export async function shareLink(url: string, text: string): Promise<'shared' | 'copied' | 'failed'> {
+  const app = webApp();
+  if (app) {
+    app.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`);
+    return 'shared';
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    return 'copied';
+  } catch {
+    return 'failed';
+  }
 }
 
 export function colorScheme(): 'light' | 'dark' {

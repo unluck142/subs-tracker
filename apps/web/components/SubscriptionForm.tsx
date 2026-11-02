@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Avatar from '@/components/Avatar';
+import { SharingSection } from '@/components/Sharing';
 import { api } from '@/lib/api';
 import {
   addMonthsLocal,
@@ -17,7 +18,7 @@ import type { CatalogItem, Subscription, SubscriptionInput } from '@/lib/types';
 
 type Props =
   | { mode: 'create'; service: CatalogItem | null; initialName?: string; onDone: () => void }
-  | { mode: 'edit'; sub: Subscription; onDone: () => void };
+  | { mode: 'edit'; sub: Subscription; onDone: () => void; onDataChanged?: () => void };
 
 function initialState(props: Props) {
   if (props.mode === 'edit') {
@@ -225,6 +226,10 @@ export default function SubscriptionForm(props: Props) {
           />
         </label>
       </div>
+
+      {sub && sub.status === 'ACTIVE' && props.mode === 'edit' && (
+        <SharingSection sub={sub} onChanged={() => props.onDataChanged?.()} />
+      )}
 
       {sub && (
         <div className="list" style={{ marginTop: 16 }}>

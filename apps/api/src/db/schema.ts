@@ -116,6 +116,8 @@ export const subscriptions = pgTable(
     reviewMuted: boolean('review_muted').notNull().default(false),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     notes: text('notes'),
+    // Общая подписка: по этому токену участники присоединяются через ссылку t.me/бот?start=join_<токен>
+    shareToken: text('share_token').unique(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -134,9 +136,46 @@ export const reminderLogs = pgTable(
       .notNull()
       .references(() => subscriptions.id, { onDelete: 'cascade' }),
     chargeDate: date('charge_date', { mode: 'string' }).notNull(),
+    // Кому отправлено: владельцу или участнику общей подписки
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('reminder_logs_sub_date_uq').on(t.subscriptionId, t.chargeDate)],
+  (t) => [uniqueIndex('reminder_logs_sub_date_user_uq').on(t.subscriptionId, t.chargeDate, t.userId)],
+);
+
+/** Участники общей подписки (владелец — subscriptions.userId, сюда не входит) */
+export const subscriptionMembers = pgTable(
+  'subscription_members',
+  {
+    id: serial('id').primaryKey(),
+    subscriptionId: integer('subscription_id')
+      .notNull()
+      .references(() => subscriptions.id, { onDelete: 'cascade' }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('subscription_members_sub_user_uq').on(t.subscriptionId, t.userId),
+    index('subscription_members_user_idx').on(t.userId),
+  ],
+);
+
+/** Участник перевёл свою долю за конкретное списание */
+export const memberPayments = pgTable(
+  'member_payments',
+  {
+    id: serial('id').primaryKey(),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => subscriptionMembers.id, { onDelete: 'cascade' }),
+    chargeDate: date('charge_date', { mode: 'string' }).notNull(),
+    paidAt: timestamp('paid_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('member_payments_member_date_uq').on(t.memberId, t.chargeDate)],
 );
 
 // Связи для удобных запросов вида db.query.subscriptions.findMany({ with: { service: true } })
@@ -152,6 +191,17 @@ export const subscriptionsRelations = relations(subscriptions, ({ one, many }) =
   user: one(users, { fields: [subscriptions.userId], references: [users.id] }),
   service: one(services, { fields: [subscriptions.serviceId], references: [services.id] }),
   reminders: many(reminderLogs),
+  members: many(subscriptionMembers),
+}));
+
+export const subscriptionMembersRelations = relations(subscriptionMembers, ({ one, many }) => ({
+  subscription: one(subscriptions, { fields: [subscriptionMembers.subscriptionId], references: [subscriptions.id] }),
+  user: one(users, { fields: [subscriptionMembers.userId], references: [users.id] }),
+  payments: many(memberPayments),
+}));
+
+export const memberPaymentsRelations = relations(memberPayments, ({ one }) => ({
+  member: one(subscriptionMembers, { fields: [memberPayments.memberId], references: [subscriptionMembers.id] }),
 }));
 
 export const reminderLogsRelations = relations(reminderLogs, ({ one }) => ({
@@ -162,3 +212,4 @@ export type User = typeof users.$inferSelect;
 export type Service = typeof services.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
+export type SubscriptionMember = typeof subscriptionMembers.$inferSelect;

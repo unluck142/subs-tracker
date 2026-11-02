@@ -656,3 +656,17 @@ button {
   font-size: 14px;
   background: color-mix(in srgb, #f5a524 14%, transparent);
 }
+
+/* ——— Общие подписки ——— */
+.row.static:active {
+  background: none;
+}
+.paid-toggle {
+  padding: 2px 0;
+  font-size: 14px;
+  color: var(--link);
+  text-align: left;
+}
+.paid-toggle.on {
+  color: var(--hint);
+}

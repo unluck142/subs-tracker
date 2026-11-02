@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Home from '@/components/Home';
 import ImportStatement from '@/components/ImportStatement';
 import ServicePicker from '@/components/ServicePicker';
+import { MemberSubscription } from '@/components/Sharing';
 import Settings, { TZ_MANUAL_KEY } from '@/components/Settings';
 import SubscriptionForm from '@/components/SubscriptionForm';
 import { api, ApiError } from '@/lib/api';
@@ -203,9 +204,18 @@ export default function MiniApp() {
         />
       )}
 
-      {view.name === 'edit' && (
-        <SubscriptionForm key={`edit-${view.sub.id}`} mode="edit" sub={view.sub} onDone={afterChange} />
-      )}
+      {view.name === 'edit' &&
+        (view.sub.role === 'member' ? (
+          <MemberSubscription key={`member-${view.sub.id}`} sub={view.sub} onDone={afterChange} />
+        ) : (
+          <SubscriptionForm
+            key={`edit-${view.sub.id}`}
+            mode="edit"
+            sub={view.sub}
+            onDone={afterChange}
+            onDataChanged={() => void load(showCancelled)}
+          />
+        ))}
 
       {view.name === 'import' && (
         <ImportStatement
