@@ -47,6 +47,7 @@ export class RemindersService {
       if (reviews > 0) this.logger.log(`Проверка пользования: отправлено вопросов ${reviews}`);
     } catch (e) {
       this.logger.error(`Ошибка при рассылке напоминаний: ${(e as Error).message}`, (e as Error).stack);
+      void this.bot.alertAdmins('рассылка напоминаний', e);
     } finally {
       this.running = false;
     }

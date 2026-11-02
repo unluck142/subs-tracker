@@ -1,5 +1,6 @@
 import { Controller, Get, Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AdminService } from './admin/admin.service';
 import { TelegramAuthGuard } from './auth/telegram-auth.guard';
 import { BotService } from './bot/bot.service';
 import { CatalogController } from './catalog/catalog.controller';
@@ -30,6 +31,7 @@ class HealthController {
     CatalogService,
     SubscriptionsService,
     SharingService,
+    AdminService,
     BotService,
     RemindersService,
   ],

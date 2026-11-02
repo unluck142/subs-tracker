@@ -1,8 +1,10 @@
 import 'dotenv/config';
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { BotService } from './bot/bot.service';
+import { AlertingFilter } from './common/alerting.filter';
 import { loadConfig } from './config';
 
 async function bootstrap() {
@@ -16,6 +18,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  app.useGlobalFilters(new AlertingFilter(app.get(BotService), app.get(HttpAdapterHost).httpAdapter));
   app.enableShutdownHooks();
   // В production API доступен только локально: снаружи к нему ходит Next.js через /api/*
   if (config.isProduction) {

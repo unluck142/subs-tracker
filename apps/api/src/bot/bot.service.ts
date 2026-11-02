@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Bot, Context, GrammyError, InlineKeyboard } from 'grammy';
 import { SocksProxyAgent } from 'socks-proxy-agent';
+import { AdminService } from '../admin/admin.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { todayInTz } from '../common/dates';
 import { AppConfig, CONFIG } from '../config';
@@ -13,6 +14,8 @@ import { UsersService } from '../users/users.service';
 import { DraftStore } from './drafts';
 import {
   ADD_BY_TEXT_HINT,
+  adminAlertText,
+  adminStatsText,
   addedText,
   alreadyTrackedText,
   askPriceText,
@@ -55,6 +58,7 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     private readonly subs: SubscriptionsService,
     private readonly catalog: CatalogService,
     private readonly sharing: SharingService,
+    private readonly admin: AdminService,
   ) {}
 
   get enabled(): boolean {
@@ -72,7 +76,12 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     });
     if (proxy) this.logger.log(`Запросы к Telegram идут через прокси ${proxy}`);
     this.registerHandlers(this.bot);
-    this.bot.catch((err) => this.logger.error(`Ошибка в обработчике бота: ${err.message}`, err.stack));
+    this.bot.catch((err) => {
+      this.logger.error(`Ошибка в обработчике бота: ${err.message}`, err.stack);
+      void this.alertAdmins('бот', err.error ?? err);
+      // Пользователь не должен оставаться без ответа
+      void err.ctx.reply('Что-то пошло не так 😔 Попробуй ещё раз чуть позже.').catch(() => undefined);
+    });
 
     // Не ждём bot.start(): он резолвится только при остановке бота
     void this.setupAndStart(this.bot);
@@ -178,6 +187,14 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     });
 
     bot.command('help', (ctx) => ctx.reply(HELP_TEXT, { parse_mode: 'HTML' }));
+
+    // Статистика — только для владельцев бота (ADMIN_TELEGRAM_IDS), остальным как неизвестная команда
+    bot.command('stats', async (ctx) => {
+      if (!ctx.from || !this.config.adminTelegramIds.includes(ctx.from.id)) {
+        return ctx.reply(HELP_TEXT, { parse_mode: 'HTML' });
+      }
+      return ctx.reply(adminStatsText(await this.admin.stats()), { parse_mode: 'HTML' });
+    });
 
     bot.command('list', async (ctx) => {
       const user = await this.userFromCtx(ctx);
@@ -379,6 +396,27 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       parse_mode: 'HTML',
       reply_markup: new InlineKeyboard().text('✅ Присоединиться', `j:${token}`).text('Не сейчас', 'jno'),
     });
+  }
+
+  private readonly lastAlerts = new Map<string, number>();
+
+  /**
+   * Сообщить владельцам бота об ошибке. Одинаковые ошибки — не чаще раза в 10 минут,
+   * чтобы падение базы не превратилось в сотню сообщений.
+   */
+  async alertAdmins(where: string, error: unknown): Promise<void> {
+    if (!this.bot || this.config.adminTelegramIds.length === 0) return;
+    const message = error instanceof Error ? error.message : String(error);
+    const key = `${where}:${message}`;
+    const last = this.lastAlerts.get(key) ?? 0;
+    if (Date.now() - last < 10 * 60_000) return;
+    this.lastAlerts.set(key, Date.now());
+    if (this.lastAlerts.size > 500) this.lastAlerts.clear();
+    for (const id of this.config.adminTelegramIds) {
+      await this.bot.api
+        .sendMessage(id, adminAlertText(where, message), { parse_mode: 'HTML' })
+        .catch((e) => this.logger.warn(`Не удалось отправить ошибку админу ${id}: ${(e as Error).message}`));
+    }
   }
 
   /** Короткое уведомление без кнопок (участник присоединился, перевёл долю…) */

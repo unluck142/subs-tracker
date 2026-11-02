@@ -11,6 +11,8 @@ export interface AppConfig {
    * Нужен, если Telegram с этого компьютера доступен только через VPN.
    */
   telegramProxy: string | null;
+  /** Telegram ID владельцев бота: им доступна /stats и приходят сообщения об ошибках */
+  adminTelegramIds: number[];
   /** Сколько секунд действительна авторизация из мини-приложения */
   initDataMaxAge: number;
   /**
@@ -33,6 +35,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     botToken: env.BOT_TOKEN?.trim() || null,
     webAppUrl: env.WEBAPP_URL?.trim() || null,
     telegramProxy: env.TELEGRAM_PROXY?.trim() || null,
+    adminTelegramIds: (env.ADMIN_TELEGRAM_IDS ?? '')
+      .split(',')
+      .map((id) => Number(id.trim()))
+      .filter((id) => Number.isSafeInteger(id) && id > 0),
     initDataMaxAge: Number(env.INIT_DATA_MAX_AGE) || 24 * 60 * 60,
     devTelegramId: !isProduction && devId > 0 ? devId : null,
     isProduction,
