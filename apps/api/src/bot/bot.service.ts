@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
+import { autoRetry } from '@grammyjs/auto-retry';
 import { Bot, Context, GrammyError, InlineKeyboard } from 'grammy';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import {
@@ -61,6 +62,12 @@ import { parseMessage } from './parse-message';
 
 export type SendResult = 'sent' | 'blocked' | 'failed';
 
+const USER_COMMANDS = [
+  { command: 'start', description: 'Открыть приложение' },
+  { command: 'list', description: 'Мои подписки и сумма в месяц' },
+  { command: 'help', description: 'Справка' },
+];
+
 @Injectable()
 export class BotService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(BotService.name);
@@ -90,6 +97,9 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       client: proxy ? { baseFetchConfig: { agent: new SocksProxyAgent(proxy), compress: true } } : undefined,
     });
     if (proxy) this.logger.log(`Запросы к Telegram идут через прокси ${proxy}`);
+    // «Слишком много запросов» (429) и сбои Telegram — подождать, сколько просит Telegram, и повторить.
+    // Важно для рассылки напоминаний: в 10:00 их уходит много одновременно.
+    this.bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }));
     this.registerHandlers(this.bot);
     this.bot.catch((err) => {
       // Повторное нажатие кнопки («message is not modified») и запоздалый ответ на кнопку — не ошибки
@@ -117,20 +127,9 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
 
   private async setupAndStart(bot: Bot) {
     try {
-      const commands = [
-        { command: 'start', description: 'Открыть приложение' },
-        { command: 'list', description: 'Мои подписки и сумма в месяц' },
-        { command: 'help', description: 'Справка' },
-      ];
-      await bot.api.setMyCommands(commands);
+      await bot.api.setMyCommands(USER_COMMANDS);
       // Владельцу — ещё и /stats. Остальные её в меню не видят.
-      for (const id of this.config.adminTelegramIds) {
-        await bot.api
-          .setMyCommands([...commands, { command: 'stats', description: 'Статистика (только для тебя)' }], {
-            scope: { type: 'chat', chat_id: id },
-          })
-          .catch((e) => this.logger.warn(`Не удалось поставить меню админу ${id}: ${(e as Error).message}`));
-      }
+      for (const id of this.config.adminTelegramIds) await this.setAdminCommands(id);
       if (this.config.webAppUrl) {
         // Кнопка «Подписки» слева от поля ввода — открывает мини-приложение
         await bot.api.setChatMenuButton({
@@ -166,9 +165,21 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       await next();
     });
 
+    // Пользователь заблокировал или разблокировал бота — Telegram сообщает сразу.
+    // Без этого узнали бы только при неудачной отправке напоминания, и статистика врала бы.
+    bot.on('my_chat_member', async (ctx) => {
+      const status = ctx.myChatMember.new_chat_member.status;
+      const user = await this.users.findByTelegramId(ctx.myChatMember.from.id);
+      if (!user) return;
+      if (status === 'kicked') await this.users.markBotBlocked(user.id, true);
+      else if (status === 'member') await this.users.markBotBlocked(user.id, false);
+    });
+
     bot.command('start', async (ctx) => {
       if (!ctx.from) return;
       const user = await this.users.upsertFromTelegram(ctx.from, { unblock: true });
+      // Админ мог впервые написать боту уже после запуска — ставим ему меню с /stats сразу
+      if (this.isAdmin(ctx)) void this.setAdminCommands(ctx.from.id);
       // Ссылка-приглашение в общую подписку: t.me/бот?start=join_<токен>
       const payload = typeof ctx.match === 'string' ? ctx.match : '';
       if (payload.startsWith('join_')) return this.showJoinOffer(ctx, user, payload.slice(5));
@@ -459,6 +470,15 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       parse_mode: 'HTML',
       reply_markup: new InlineKeyboard().text('✅ Присоединиться', `j:${token}`).text('Не сейчас', 'jno'),
     });
+  }
+
+  private async setAdminCommands(chatId: number): Promise<void> {
+    await this.bot?.api
+      .setMyCommands([...USER_COMMANDS, { command: 'stats', description: 'Статистика (только для тебя)' }], {
+        scope: { type: 'chat', chat_id: chatId },
+      })
+      // «chat not found» — админ ещё не писал боту; поставим, когда нажмёт /start
+      .catch((e) => this.logger.warn(`Не удалось поставить меню админу ${chatId}: ${(e as Error).message}`));
   }
 
   private isAdmin(ctx: Context): boolean {

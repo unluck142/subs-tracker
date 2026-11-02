@@ -251,7 +251,20 @@ export default function SubscriptionForm(props: Props) {
 
       <div className="bottom-bar">
         <button className="btn" onClick={save} disabled={!canSave}>
-          {saving ? 'Сохраняю…' : props.mode === 'edit' ? 'Сохранить' : 'Добавить подписку'}
+          {/* Неактивная кнопка без объяснения непонятна — подсказываем, чего не хватает */}
+          {saving
+            ? 'Сохраняю…'
+            : !form.name.trim()
+              ? 'Укажи название'
+              : price === null
+                ? form.price.trim()
+                  ? 'Цена — только цифры, например 299,90'
+                  : 'Укажи цену'
+                : !form.nextChargeDate
+                  ? 'Укажи дату списания'
+                  : props.mode === 'edit'
+                    ? 'Сохранить'
+                    : 'Добавить подписку'}
         </button>
       </div>
     </>
