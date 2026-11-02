@@ -29,7 +29,15 @@ class DateOnlyConstraint implements ValidatorConstraintInterface {
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
+export const SUBSCRIPTION_SOURCES = ['app', 'import', 'bot', 'sms'] as const;
+export type SubscriptionSource = (typeof SUBSCRIPTION_SOURCES)[number];
+
 export class CreateSubscriptionDto {
+  /** Откуда добавлена — для статистики. По умолчанию app (форма в приложении). */
+  @IsOptional()
+  @IsIn(SUBSCRIPTION_SOURCES)
+  source?: SubscriptionSource;
+
   /** ID сервиса из каталога. Если не указан — нужна customName */
   @IsOptional()
   @IsInt()

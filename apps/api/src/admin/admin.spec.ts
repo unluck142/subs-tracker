@@ -1,18 +1,57 @@
-import { adminAlertText, adminStatsText } from '../bot/messages';
+import { adminAlertText } from '../bot/messages';
 import { loadConfig } from '../config';
+import { adminKeyboard, growthText, overviewText, recentText, servicesText } from './admin-texts';
 
-describe('для владельца бота', () => {
-  it('статистика', () => {
-    const text = adminStatsText({
-      users: { total: 120, new24h: 5, new7d: 30, withSubscriptions: 80, blockedBot: 3 },
-      subscriptions: { active: 400, added7d: 60, cancelled: 25, shared: 7, members: 12 },
-      avgMonthlyKopecks: 154000,
-      savedMonthlyKopecks: 999900,
-      topServices: [{ name: 'Яндекс Плюс', count: 50 }],
-    });
-    expect(text).toContain('Пользователей: <b>120</b> (+5 за сутки, +30 за неделю)');
-    expect(text).toContain('1. Яндекс Плюс — 50');
-    expect(text).toContain('1 540 ₽'); // тысячи отделены неразрывным пробелом
+const NOW = new Date('2026-11-03T05:00:00Z');
+const TZ = 'Asia/Novosibirsk';
+
+describe('админ-панель', () => {
+  it('обзор: рост к прошлой неделе и сумма в месяц', () => {
+    const text = overviewText(
+      {
+        users: 120, new24h: 5, new7d: 30, newPrev7d: 20, active24h: 40, active7d: 90,
+        activeSubs: 400, newSubs24h: 12, monthlyTotalKopecks: 15400000, reminders24h: 33,
+      },
+      NOW,
+      TZ,
+    );
+    expect(text).toContain('на 12:00'); // время по часовому поясу админа
+    expect(text).toContain('+30 за неделю (неделей раньше +20) ↑');
+    expect(text).toContain('154 000 ₽'); // тысячи отделены неразрывным пробелом
+  });
+
+  it('рост по дням — таблица с полосками', () => {
+    const text = growthText(
+      [
+        { day: '01.11', users: 0, subs: 0 },
+        { day: '02.11', users: 4, subs: 8 },
+      ],
+      NOW,
+      TZ,
+    );
+    expect(text).toContain('+4 пользователей, +8 подписок');
+    expect(text).toContain('02.11   4 ████████   8 ████████');
+    expect(text).toContain('01.11   0 ·');
+  });
+
+  it('экранирует имена пользователей и названия', () => {
+    expect(servicesText({ top: [], custom: [{ name: '<b>Зал</b>', count: 2 }], cancelled: [] }, NOW, TZ)).toContain(
+      '&lt;b&gt;Зал&lt;/b&gt;',
+    );
+    const recent = recentText(
+      [{ name: 'Петя <script>', username: 'petya', createdAt: NOW, lastSeenAt: null, subs: 2, blocked: true }],
+      NOW,
+      TZ,
+    );
+    expect(recent).toContain('Петя &lt;script&gt;');
+    expect(recent).toContain('🚫');
+  });
+
+  it('кнопки разделов отмечают текущий', () => {
+    const buttons = adminKeyboard('money').inline_keyboard.flat().map((b) => b.text);
+    expect(buttons).toContain('• 💰 Деньги');
+    expect(buttons).toContain('🔄 Обновить');
+    expect(buttons).toHaveLength(9);
   });
 
   it('ошибка экранируется и обрезается', () => {

@@ -98,6 +98,7 @@ export default function ImportStatement({
           nextChargeDate: c.nextChargeDate,
           isTrial: false,
           remindDaysBefore: 1,
+          source: 'import',
         });
         done += 1;
         setProgress({ done, total: chosen.length });

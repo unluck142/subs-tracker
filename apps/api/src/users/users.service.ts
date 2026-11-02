@@ -5,6 +5,8 @@ import { isValidTimezone } from '../common/dates';
 import { DB, Db } from '../db/db.module';
 import { User, users } from '../db/schema';
 
+const SEEN_THROTTLE_MS = 10 * 60_000;
+
 @Injectable()
 export class UsersService {
   constructor(@Inject(DB) private readonly db: Db) {}
@@ -21,7 +23,10 @@ export class UsersService {
     // Вызывается на каждый запрос, поэтому сначала читаем и пишем только при изменениях
     const existing = await this.findByTelegramId(tg.id);
     if (existing) {
+      // Время последней активности обновляем не чаще раза в 10 минут — для статистики этого хватает
+      const seenStale = !existing.lastSeenAt || Date.now() - existing.lastSeenAt.getTime() > SEEN_THROTTLE_MS;
       const changed =
+        seenStale ||
         existing.firstName !== values.firstName ||
         existing.username !== values.username ||
         existing.languageCode !== values.languageCode ||
@@ -34,6 +39,7 @@ export class UsersService {
           username: values.username,
           languageCode: values.languageCode,
           updatedAt: sql`now()`,
+          lastSeenAt: new Date(),
           ...(opts.unblock ? { botBlocked: false } : {}),
         })
         .where(eq(users.id, existing.id))
@@ -42,7 +48,11 @@ export class UsersService {
     }
 
     // Новый пользователь. onConflictDoNothing — на случай двух одновременных первых запросов
-    const [created] = await this.db.insert(users).values(values).onConflictDoNothing().returning();
+    const [created] = await this.db
+      .insert(users)
+      .values({ ...values, lastSeenAt: new Date() })
+      .onConflictDoNothing()
+      .returning();
     return created ?? (await this.findByTelegramId(tg.id))!;
   }
 

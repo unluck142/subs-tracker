@@ -56,6 +56,8 @@ export const users = pgTable('users', {
   // Раз в неделю спрашиваем, пользуется ли он одной из подписок. Можно выключить в настройках.
   reviewsEnabled: boolean('reviews_enabled').notNull().default(true),
   lastReviewAt: timestamp('last_review_at', { withTimezone: true }),
+  // Когда последний раз писал боту или открывал приложение — для статистики активности
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -118,6 +120,8 @@ export const subscriptions = pgTable(
     notes: text('notes'),
     // Общая подписка: по этому токену участники присоединяются через ссылку t.me/бот?start=join_<токен>
     shareToken: text('share_token').unique(),
+    // Откуда добавлена: app — форма в приложении, import — выписка, bot — текстом боту, sms — пересланное СМС
+    source: text('source').notNull().default('app'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

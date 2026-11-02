@@ -331,34 +331,6 @@ export function memberLeftText(memberName: string, name: string, removedByOwner:
 
 // ─── Для владельца бота ─────────────────────────────────────────────────────
 
-export interface AdminStatsView {
-  users: { total: number; new24h: number; new7d: number; withSubscriptions: number; blockedBot: number };
-  subscriptions: { active: number; added7d: number; cancelled: number; shared: number; members: number };
-  avgMonthlyKopecks: number;
-  savedMonthlyKopecks: number;
-  topServices: { name: string; count: number }[];
-}
-
-export function adminStatsText(s: AdminStatsView): string {
-  const top = s.topServices.length
-    ? s.topServices.map((t, i) => `${i + 1}. ${escapeHtml(t.name)} — ${t.count}`).join('\n')
-    : 'пока пусто';
-  return [
-    '📊 <b>Статистика</b>',
-    '',
-    `👥 Пользователей: <b>${s.users.total}</b> (+${s.users.new24h} за сутки, +${s.users.new7d} за неделю)`,
-    `С подписками: ${s.users.withSubscriptions} · заблокировали бота: ${s.users.blockedBot}`,
-    '',
-    `📋 Активных подписок: <b>${s.subscriptions.active}</b> (+${s.subscriptions.added7d} за неделю)`,
-    `Отменено: ${s.subscriptions.cancelled} — экономят ${formatRub(s.savedMonthlyKopecks)} в месяц`,
-    `Общих: ${s.subscriptions.shared}, участников в них: ${s.subscriptions.members}`,
-    `В среднем на подписки: ${formatRub(s.avgMonthlyKopecks)} в месяц на человека`,
-    '',
-    '<b>Популярные сервисы</b>',
-    top,
-  ].join('\n');
-}
-
 export function adminAlertText(where: string, message: string): string {
   return `🚨 <b>Ошибка: ${escapeHtml(where)}</b>\n\n<code>${escapeHtml(message.slice(0, 800))}</code>`;
 }

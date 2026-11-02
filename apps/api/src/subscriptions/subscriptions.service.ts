@@ -216,6 +216,7 @@ export class SubscriptionsService {
         isTrial: dto.isTrial ?? false,
         remindDaysBefore: dto.remindDaysBefore ?? 1,
         notes: dto.notes || null,
+        source: dto.source ?? 'app',
       })
       .returning();
     return this.get(user, created.id);

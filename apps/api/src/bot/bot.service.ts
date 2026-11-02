@@ -1,6 +1,19 @@
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Bot, Context, GrammyError, InlineKeyboard } from 'grammy';
 import { SocksProxyAgent } from 'socks-proxy-agent';
+import {
+  activityText,
+  ADMIN_SECTIONS,
+  adminKeyboard,
+  AdminSection,
+  growthText,
+  moneyText,
+  overviewText,
+  recentText,
+  servicesText,
+  subsText,
+  usersText,
+} from '../admin/admin-texts';
 import { AdminService } from '../admin/admin.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { todayInTz } from '../common/dates';
@@ -15,7 +28,6 @@ import { DraftStore } from './drafts';
 import {
   ADD_BY_TEXT_HINT,
   adminAlertText,
-  adminStatsText,
   addedText,
   alreadyTrackedText,
   askPriceText,
@@ -105,11 +117,20 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
 
   private async setupAndStart(bot: Bot) {
     try {
-      await bot.api.setMyCommands([
+      const commands = [
         { command: 'start', description: 'Открыть приложение' },
         { command: 'list', description: 'Мои подписки и сумма в месяц' },
         { command: 'help', description: 'Справка' },
-      ]);
+      ];
+      await bot.api.setMyCommands(commands);
+      // Владельцу — ещё и /stats. Остальные её в меню не видят.
+      for (const id of this.config.adminTelegramIds) {
+        await bot.api
+          .setMyCommands([...commands, { command: 'stats', description: 'Статистика (только для тебя)' }], {
+            scope: { type: 'chat', chat_id: id },
+          })
+          .catch((e) => this.logger.warn(`Не удалось поставить меню админу ${id}: ${(e as Error).message}`));
+      }
       if (this.config.webAppUrl) {
         // Кнопка «Подписки» слева от поля ввода — открывает мини-приложение
         await bot.api.setChatMenuButton({
@@ -203,10 +224,27 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
 
     // Статистика — только для владельцев бота (ADMIN_TELEGRAM_IDS), остальным как неизвестная команда
     bot.command('stats', async (ctx) => {
-      if (!ctx.from || !this.config.adminTelegramIds.includes(ctx.from.id)) {
-        return ctx.reply(HELP_TEXT, { parse_mode: 'HTML' });
+      if (!this.isAdmin(ctx)) return ctx.reply(HELP_TEXT, { parse_mode: 'HTML' });
+      const user = await this.userFromCtx(ctx);
+      const { text, keyboard } = await this.adminSection('overview', user?.timezone ?? 'Europe/Moscow');
+      return ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
+    });
+
+    // Разделы админ-панели: adm:<раздел>. Чужим нажатиям (если кто-то перешлёт сообщение) не отвечаем.
+    bot.callbackQuery(/^adm:(\w+)$/, async (ctx) => {
+      const section = ctx.match[1] as AdminSection;
+      if (!this.isAdmin(ctx) || !ADMIN_SECTIONS.includes(section)) return ctx.answerCallbackQuery();
+      const user = await this.userFromCtx(ctx);
+      const { text, keyboard } = await this.adminSection(section, user?.timezone ?? 'Europe/Moscow');
+      try {
+        await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard });
+        return ctx.answerCallbackQuery();
+      } catch (e) {
+        if (e instanceof GrammyError && e.description.includes('message is not modified')) {
+          return ctx.answerCallbackQuery({ text: 'Без изменений' });
+        }
+        throw e;
       }
-      return ctx.reply(adminStatsText(await this.admin.stats()), { parse_mode: 'HTML' });
     });
 
     bot.command('list', async (ctx) => {
@@ -332,6 +370,7 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
             nextChargeDate: p.nextChargeDate,
             isTrial: p.isTrial,
             remindDaysBefore: 1,
+            source: p.kind === 'bank' ? 'sms' : 'bot',
           });
           const stats = await this.subs.stats(user);
           await ctx.editMessageText(addedText(p.name, stats.monthlyKopecks), {
@@ -420,6 +459,26 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       parse_mode: 'HTML',
       reply_markup: new InlineKeyboard().text('✅ Присоединиться', `j:${token}`).text('Не сейчас', 'jno'),
     });
+  }
+
+  private isAdmin(ctx: Context): boolean {
+    return Boolean(ctx.from && this.config.adminTelegramIds.includes(ctx.from.id));
+  }
+
+  /** Текст и кнопки раздела админ-панели */
+  private async adminSection(section: AdminSection, tz: string): Promise<{ text: string; keyboard: InlineKeyboard }> {
+    const now = new Date();
+    const texts: Record<AdminSection, () => Promise<string>> = {
+      overview: async () => overviewText(await this.admin.overview(), now, tz),
+      users: async () => usersText(await this.admin.users(), now, tz),
+      growth: async () => growthText(await this.admin.growth(tz), now, tz),
+      subs: async () => subsText(await this.admin.subscriptions(), now, tz),
+      services: async () => servicesText(await this.admin.services(), now, tz),
+      money: async () => moneyText(await this.admin.money(tz), now, tz),
+      activity: async () => activityText(await this.admin.activity(), now, tz),
+      recent: async () => recentText(await this.admin.recentUsers(), now, tz),
+    };
+    return { text: await texts[section](), keyboard: adminKeyboard(section) };
   }
 
   private readonly lastAlerts = new Map<string, number>();

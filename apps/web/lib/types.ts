@@ -109,6 +109,8 @@ export interface Stats {
 }
 
 export interface SubscriptionInput {
+  /** Откуда добавлена — для статистики (по умолчанию форма в приложении) */
+  source?: 'app' | 'import';
   serviceId?: number;
   customName?: string;
   price: number;
