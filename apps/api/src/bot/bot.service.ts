@@ -5,6 +5,7 @@ import { CatalogService } from '../catalog/catalog.service';
 import { todayInTz } from '../common/dates';
 import { AppConfig, CONFIG } from '../config';
 import type { User } from '../db/schema';
+import { overlapHint } from '../subscriptions/bundles';
 import { SubscriptionsService, SubscriptionView } from '../subscriptions/subscriptions.service';
 import { UsersService } from '../users/users.service';
 import { DraftStore } from './drafts';
@@ -268,7 +269,8 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     }
 
     const key = this.drafts.put({ userId: user.id, parsed: p, existingId: null });
-    return ctx.reply(draftText(p), {
+    const hint = overlapHint(p.service?.slug ?? null, await this.subs.list(user));
+    return ctx.reply(draftText(p, hint), {
       parse_mode: 'HTML',
       reply_markup: new InlineKeyboard().text('✅ Добавить', `d:${key}:add`).text('❌ Не надо', `d:${key}:no`),
     });

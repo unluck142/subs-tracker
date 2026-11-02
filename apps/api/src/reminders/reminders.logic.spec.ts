@@ -51,6 +51,7 @@ describe('тексты бота', () => {
     notes: null,
     status: 'ACTIVE',
     hasCancelGuide: false,
+    includedIn: null,
   };
 
   it('пишет понятное напоминание и экранирует HTML', () => {
@@ -58,6 +59,11 @@ describe('тексты бота', () => {
     expect(text).toContain('Завтра спишут <b>299 ₽</b>');
     expect(text).toContain('Okko &lt;script&gt;');
     expect(text).not.toContain('<script>');
+  });
+
+  it('подсказывает, если подписка уже входит в другую', () => {
+    expect(reminderText({ ...sub, includedIn: 'СберПрайм' })).toContain('уже входит в «СберПрайм»');
+    expect(reminderText(sub)).not.toContain('входит');
   });
 
   it('отдельный текст для пробного периода', () => {

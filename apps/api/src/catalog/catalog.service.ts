@@ -51,6 +51,7 @@ export class CatalogService {
     const rows = await this.db.select().from(services);
     const refs = rows.map((r) => ({
       id: r.id,
+      slug: r.slug,
       name: r.name,
       periodUnit: r.periodUnit,
       periodCount: r.periodCount,

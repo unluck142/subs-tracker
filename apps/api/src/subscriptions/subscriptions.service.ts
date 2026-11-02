@@ -4,6 +4,7 @@ import { diffDays, parts, rollForward, todayInTz } from '../common/dates';
 import { monthlyKopecks } from '../common/money';
 import { DB, Db } from '../db/db.module';
 import { Category, Service, Subscription, subscriptions, User } from '../db/schema';
+import { findOverlaps, Overlap } from './bundles';
 import { CreateSubscriptionDto, UpdateSubscriptionDto } from './dto';
 
 export type SubscriptionWithService = Subscription & { service: Service | null };
@@ -26,6 +27,8 @@ export interface SubscriptionView {
   notes: string | null;
   status: Subscription['status'];
   hasCancelGuide: boolean;
+  /** Название подписки, в которую эта уже входит (или дубль которой она) — можно не платить дважды */
+  includedIn: string | null;
 }
 
 export interface Stats {
@@ -38,6 +41,8 @@ export interface Stats {
   /** Сколько в месяц экономит пользователь благодаря отменённым подпискам */
   savedMonthlyKopecks: number;
   trialsCount: number;
+  /** Где пользователь платит за одно и то же дважды */
+  overlaps: Overlap[];
 }
 
 export function subscriptionName(sub: SubscriptionWithService): string {
@@ -59,8 +64,10 @@ export class SubscriptionsService {
     });
     const today = todayInTz(user.timezone);
     const fresh = await this.rollStale(rows, today);
-    return fresh
-      .map((s) => this.toView(s, today))
+    const views = fresh.map((s) => this.toView(s, today));
+    const covered = new Map(findOverlaps(views).map((o) => [o.subscriptionId, o.coveredByName]));
+    return views
+      .map((v) => ({ ...v, includedIn: covered.get(v.id) ?? null }))
       .sort((a, b) => Number(b.status === 'ACTIVE') - Number(a.status === 'ACTIVE') || a.daysLeft - b.daysLeft);
   }
 
@@ -167,6 +174,7 @@ export class SubscriptionsService {
         all.filter((s) => s.status === 'CANCELLED').reduce((sum, s) => sum + s.monthlyKopecks, 0),
       ),
       trialsCount: active.filter((s) => s.isTrial).length,
+      overlaps: findOverlaps(all),
     };
   }
 
@@ -230,6 +238,7 @@ export class SubscriptionsService {
       notes: sub.notes,
       status: sub.status,
       hasCancelGuide: Boolean(sub.service?.cancelSteps || sub.service?.cancelUrl),
+      includedIn: null,
     };
   }
 }

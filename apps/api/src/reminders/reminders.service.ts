@@ -81,7 +81,9 @@ export class RemindersService {
         .returning({ id: reminderLogs.id });
       if (reserved.length === 0) continue;
 
-      const result = await this.bot.sendReminder(user, this.subs.toView(fresh, today));
+      // Берём из полного списка: там посчитано, не входит ли подписка в другую (Кинопоиск — в Плюс)
+      const view = (await this.subs.list(user)).find((s) => s.id === fresh.id) ?? this.subs.toView(fresh, today);
+      const result = await this.bot.sendReminder(user, view);
       if (result === 'sent') {
         sent++;
       } else {

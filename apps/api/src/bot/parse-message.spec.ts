@@ -2,6 +2,7 @@ import { CatalogRef, parseMessage } from './parse-message';
 
 const ref = (id: number, name: string, patterns: string[], aliases: string[] = [], period: Partial<CatalogRef> = {}): CatalogRef => ({
   id,
+  slug: name.toLowerCase(),
   name,
   periodUnit: 'MONTH',
   periodCount: 1,

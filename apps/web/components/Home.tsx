@@ -52,6 +52,35 @@ function CategoryBars({ byCategory }: { byCategory: Stats['byCategory'] }) {
   );
 }
 
+/** Где пользователь платит за одно и то же дважды */
+function Overlaps({ stats, subs, onOpen }: { stats: Stats; subs: Subscription[]; onOpen: (sub: Subscription) => void }) {
+  if (stats.overlaps.length === 0) return null;
+  const total = stats.overlaps.reduce((sum, o) => sum + o.monthlyKopecks, 0);
+  return (
+    <div className="card tip">
+      <div className="tip-title">💡 Можно сэкономить {formatRubRounded(total)} в месяц</div>
+      {stats.overlaps.map((o) => {
+        const sub = subs.find((s) => s.id === o.subscriptionId);
+        return (
+          <button key={o.subscriptionId} className="tip-row" onClick={() => sub && onOpen(sub)} disabled={!sub}>
+            <span>
+              {o.kind === 'bundle' ? (
+                <>
+                  «{o.name}» уже входит в «{o.coveredByName}»
+                </>
+              ) : (
+                <>«{o.name}» добавлена дважды</>
+              )}
+            </span>
+            <span className="tip-price">{formatRubRounded(o.monthlyKopecks)} ›</span>
+          </button>
+        );
+      })}
+      <div className="tip-note">Состав тарифов иногда меняется — проверь свой, прежде чем отменять.</div>
+    </div>
+  );
+}
+
 function SubRow({ sub, onOpen }: { sub: Subscription; onOpen: () => void }) {
   const cancelled = sub.status === 'CANCELLED';
   const soon = !cancelled && sub.daysLeft <= 2;
@@ -140,6 +169,8 @@ export default function Home({
           </div>
         )}
       </div>
+
+      <Overlaps stats={stats} subs={subs} onOpen={onOpen} />
 
       <CategoryBars byCategory={stats.byCategory} />
 

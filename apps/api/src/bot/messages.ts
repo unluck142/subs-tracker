@@ -59,7 +59,9 @@ export function reminderText(sub: SubscriptionView): string {
   return [
     `⏰ ${capitalize(when)} спишут <b>${price}</b> за ${name} (${periodLabel(sub.periodUnit, sub.periodCount)}).`,
     '',
-    'Пользуешься? Если нет — отмени, пока не списали.',
+    sub.includedIn
+      ? `💡 Похоже, ${name} уже входит в «${escapeHtml(sub.includedIn)}» — проверь свой тариф, возможно, платишь дважды.`
+      : 'Пользуешься? Если нет — отмени, пока не списали.',
   ].join('\n');
 }
 
@@ -146,7 +148,9 @@ export interface DraftView {
   isTrial: boolean;
 }
 
-export function draftText(d: DraftView): string {
+export type OverlapHint = { coveredBy: string } | { covers: string[] } | null;
+
+export function draftText(d: DraftView, hint: OverlapHint = null): string {
   const name = `<b>${escapeHtml(d.name)}</b>`;
   const price = `${formatRub(d.priceKopecks)} ${periodLabel(d.periodUnit, d.periodCount)}`;
   const head =
@@ -162,6 +166,11 @@ export function draftText(d: DraftView): string {
     '',
     'Напомню за день. Дату и цену можно поправить в приложении.',
   );
+  if (hint && 'coveredBy' in hint) {
+    lines.push('', `💡 Похоже, ${name} уже входит в твой «${escapeHtml(hint.coveredBy)}» — проверь тариф, может, платить отдельно не нужно.`);
+  } else if (hint) {
+    lines.push('', `💡 В ${name} обычно уже входит ${hint.covers.map((c) => `«${escapeHtml(c)}»`).join(' и ')} — их можно будет отменить.`);
+  }
   return lines.join('\n');
 }
 

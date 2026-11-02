@@ -54,6 +54,16 @@ export interface Subscription {
   notes: string | null;
   status: 'ACTIVE' | 'CANCELLED';
   hasCancelGuide: boolean;
+  /** В какую подписку эта уже входит (или дубль которой она) */
+  includedIn: string | null;
+}
+
+export interface Overlap {
+  kind: 'bundle' | 'duplicate';
+  subscriptionId: number;
+  name: string;
+  coveredByName: string;
+  monthlyKopecks: number;
 }
 
 export interface Stats {
@@ -64,6 +74,7 @@ export interface Stats {
   byCategory: { category: Category; monthlyKopecks: number; count: number }[];
   savedMonthlyKopecks: number;
   trialsCount: number;
+  overlaps: Overlap[];
 }
 
 export interface SubscriptionInput {

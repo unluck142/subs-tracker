@@ -7,6 +7,7 @@ import type { PeriodUnit } from '../db/schema';
 
 export interface CatalogRef {
   id: number;
+  slug: string;
   name: string;
   periodUnit: PeriodUnit;
   periodCount: number;

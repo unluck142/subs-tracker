@@ -134,6 +134,13 @@ export default function SubscriptionForm(props: Props) {
             <div className="hint">{category ? CATEGORY_LABELS[category] : 'Своя подписка'}</div>
           </div>
         </div>
+        {sub?.includedIn && sub.status === 'ACTIVE' && (
+          <div className="tip-inline">
+            💡 {sub.includedIn === sub.name
+              ? 'Эта подписка добавлена дважды — возможно, ты платишь за неё два раза.'
+              : `Похоже, «${sub.name}» уже входит в «${sub.includedIn}». Проверь свой тариф — может, отдельно платить не нужно.`}
+          </div>
+        )}
       </div>
 
       {error && <div className="error">{error}</div>}
