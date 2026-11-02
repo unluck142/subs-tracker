@@ -29,7 +29,7 @@ export default function Settings({ me, onSaved }: { me: Me; onSaved: (me: Me) =>
     ? RUSSIAN_TIMEZONES
     : [{ tz: me.timezone, label: me.timezone }, ...RUSSIAN_TIMEZONES];
 
-  async function update(patch: Partial<Pick<Me, 'timezone' | 'reminderHour' | 'reviewsEnabled'>>) {
+  async function update(patch: Partial<Pick<Me, 'timezone' | 'reminderHour' | 'reviewsEnabled' | 'digestEnabled'>>) {
     setError(null);
     try {
       const updated = await api.updateMe(patch);
@@ -76,6 +76,20 @@ export default function Settings({ me, onSaved }: { me: Me; onSaved: (me: Me) =>
               </option>
             ))}
           </select>
+        </label>
+        <label className="field switch-row">
+          <div>
+            <div>Сводка 1-го числа</div>
+            <div className="hint">Что и когда спишут в этом месяце — одним сообщением</div>
+          </div>
+          <span className="switch">
+            <input
+              type="checkbox"
+              checked={me.digestEnabled}
+              onChange={(e) => void update({ digestEnabled: e.target.checked })}
+            />
+            <span />
+          </span>
         </label>
         <label className="field switch-row">
           <div>

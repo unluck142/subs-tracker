@@ -62,7 +62,7 @@ export class UsersService {
 
   async updateSettings(
     userId: number,
-    patch: { timezone?: string; reminderHour?: number; reviewsEnabled?: boolean },
+    patch: { timezone?: string; reminderHour?: number; reviewsEnabled?: boolean; digestEnabled?: boolean },
   ): Promise<User> {
     const set: Partial<User> = {};
     if (patch.timezone !== undefined) {
@@ -71,6 +71,7 @@ export class UsersService {
     }
     if (patch.reminderHour !== undefined) set.reminderHour = patch.reminderHour;
     if (patch.reviewsEnabled !== undefined) set.reviewsEnabled = patch.reviewsEnabled;
+    if (patch.digestEnabled !== undefined) set.digestEnabled = patch.digestEnabled;
     const [user] = await this.db
       .update(users)
       .set({ ...set, updatedAt: new Date() })

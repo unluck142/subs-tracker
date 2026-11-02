@@ -1,11 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { and, eq, isNull, lt, lte, or } from 'drizzle-orm';
+import { and, eq, isNull, lt, lte, ne, or } from 'drizzle-orm';
 import { BotService } from '../bot/bot.service';
 import { addDays, hourInTz, todayInTz } from '../common/dates';
 import { DB, Db } from '../db/db.module';
 import { reminderLogs, services, Subscription, subscriptionMembers, subscriptions, users } from '../db/schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { chargesInMonth, isDigestDue, isTrialLastCallDue } from './digest.logic';
 import { isReminderDue } from './reminders.logic';
 import { isUserReviewDue, pickForReview, REVIEW_EVERY_DAYS } from './review.logic';
 
@@ -43,6 +44,8 @@ export class RemindersService {
       if (stats.sent > 0 || stats.failed > 0) {
         this.logger.log(`Напоминания: отправлено ${stats.sent}, ошибок ${stats.failed}`);
       }
+      const digests = await this.processDigests(now);
+      if (digests > 0) this.logger.log(`Сводки месяца: отправлено ${digests}`);
       const reviews = await this.processReviews(now);
       if (reviews > 0) this.logger.log(`Проверка пользования: отправлено вопросов ${reviews}`);
     } catch (e) {
@@ -51,6 +54,58 @@ export class RemindersService {
     } finally {
       this.running = false;
     }
+  }
+
+  /** Сводка 1-го числа: «В ноябре спишут 2 688 ₽» со списком списаний по датам */
+  async processDigests(now: Date): Promise<number> {
+    const candidates = await this.db
+      .select()
+      .from(users)
+      .where(and(eq(users.digestEnabled, true), eq(users.botBlocked, false)));
+    let sent = 0;
+    for (const user of candidates) {
+      const today = todayInTz(user.timezone, now);
+      const month = today.slice(0, 7);
+      const due = isDigestDue({
+        digestEnabled: user.digestEnabled,
+        lastDigestMonth: user.lastDigestMonth,
+        today,
+        localHour: hourInTz(user.timezone, now),
+        reminderHour: user.reminderHour,
+      });
+      if (!due) continue;
+
+      // Бронируем месяц: условие в WHERE не даст отправить сводку дважды
+      const reserved = await this.db
+        .update(users)
+        .set({ lastDigestMonth: month })
+        .where(and(eq(users.id, user.id), or(isNull(users.lastDigestMonth), ne(users.lastDigestMonth, month))))
+        .returning({ id: users.id });
+      if (reserved.length === 0) continue;
+
+      const [views, stats] = await Promise.all([this.subs.list(user), this.subs.stats(user)]);
+      const charges = chargesInMonth(
+        views.map((v) => ({
+          name: v.name,
+          nextChargeDate: v.nextChargeDate,
+          periodUnit: v.periodUnit,
+          periodCount: v.periodCount,
+          amountKopecks: v.sharing?.shareKopecks ?? v.priceKopecks,
+          isTrial: v.isTrial,
+        })),
+        month,
+      );
+      // Нечего сообщать — не беспокоим
+      if (charges.length === 0) continue;
+
+      const savings = stats.overlaps.reduce((sum, o) => sum + o.monthlyKopecks, 0);
+      const result = await this.bot.sendDigest(user, month, charges, savings);
+      if (result === 'sent') sent++;
+      else if (result === 'failed') {
+        await this.db.update(users).set({ lastDigestMonth: user.lastDigestMonth }).where(eq(users.id, user.id));
+      }
+    }
+    return sent;
   }
 
   /**
@@ -142,22 +197,35 @@ export class RemindersService {
       const today = todayInTz(user.timezone, now);
       const [fresh] = await this.subs.rollStale([{ ...sub, service }], today);
 
-      const due = isReminderDue({
+      // «Напомнить завтра» — до этой даты молчим
+      if (fresh.snoozeUntil && today < fresh.snoozeUntil) continue;
+
+      const timing = {
         nextChargeDate: fresh.nextChargeDate,
-        remindDaysBefore: fresh.remindDaysBefore,
         today,
         localHour: hourInTz(user.timezone, now),
         reminderHour: user.reminderHour,
-      });
-      if (!due) continue;
+      };
+      // Основное напоминание и, для пробного периода, последнее — накануне.
+      // Основное «положено» все дни до списания (отправка одна — её держит журнал), поэтому
+      // проверяем оба вида по очереди: накануне основное уже отмечено, и уйдёт последнее.
+      const kinds = [
+        ...(isReminderDue({ ...timing, remindDaysBefore: fresh.remindDaysBefore }) ? ['main'] : []),
+        ...(isTrialLastCallDue({ ...fresh, today }) && isReminderDue({ ...timing, remindDaysBefore: 1 }) ? ['last'] : []),
+      ];
+      if (kinds.length === 0) continue;
 
       // Сначала «бронируем» напоминание в логе: уникальный индекс не даст отправить дважды,
       // даже если два экземпляра приложения запустят рассылку одновременно
-      const reserved = await this.db
-        .insert(reminderLogs)
-        .values({ subscriptionId: fresh.id, chargeDate: fresh.nextChargeDate, userId: user.id })
-        .onConflictDoNothing()
-        .returning({ id: reminderLogs.id });
+      let reserved: { id: number }[] = [];
+      for (const kind of kinds) {
+        reserved = await this.db
+          .insert(reminderLogs)
+          .values({ subscriptionId: fresh.id, chargeDate: fresh.nextChargeDate, userId: user.id, kind })
+          .onConflictDoNothing()
+          .returning({ id: reminderLogs.id });
+        if (reserved.length > 0) break;
+      }
       if (reserved.length === 0) continue;
 
       // Берём из полного списка: там посчитано, не входит ли подписка в другую (Кинопоиск — в Плюс)

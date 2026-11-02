@@ -2,7 +2,7 @@
  * Тексты бота. Вынесены отдельно, чтобы их было легко править и тестировать.
  * Используем parse_mode: HTML, поэтому всё пользовательское экранируем.
  */
-import { formatRub, inDaysLabel, periodLabel } from '../common/money';
+import { formatRub, inDaysLabel, periodLabel, plural } from '../common/money';
 import type { Stats, SubscriptionView } from '../subscriptions/subscriptions.service';
 
 export function escapeHtml(text: string): string {
@@ -378,4 +378,50 @@ export const FOREIGN_CURRENCY_TEXT =
 
 export function sharedEndedText(name: string, ownerName: string, deleted: boolean): string {
   return `«${escapeHtml(name)}» больше не общая подписка: ${escapeHtml(ownerName)} ${deleted ? 'удалил(а)' : 'отменил(а)'} её. Напоминаний о ней больше не будет.`;
+}
+
+// ─── Сводка 1-го числа ──────────────────────────────────────────────────────
+
+const MONTH_IN = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
+const shortDay = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const DIGEST_MAX_LINES = 15;
+
+export interface DigestCharge {
+  date: string;
+  name: string;
+  amountKopecks: number;
+  isTrial: boolean;
+}
+
+/** «📅 Подписки в ноябре: спишут 2 688 ₽ …». month — 'YYYY-MM' */
+export function digestText(month: string, charges: DigestCharge[], savingsMonthlyKopecks: number): string {
+  const monthIn = MONTH_IN[Number(month.slice(5, 7)) - 1];
+  const total = charges.reduce((sum, c) => sum + c.amountKopecks, 0);
+  const day = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return shortDay.format(new Date(Date.UTC(y, m - 1, d))).replace('.', '');
+  };
+  const lines = charges
+    .slice(0, DIGEST_MAX_LINES)
+    .map((c) => `• ${day(c.date)} — ${escapeHtml(c.name)}, ${formatRub(c.amountKopecks)}${c.isTrial ? ' 🎁' : ''}`);
+  if (charges.length > DIGEST_MAX_LINES) lines.push(`…и ещё ${charges.length - DIGEST_MAX_LINES}`);
+  const trials = charges.filter((c) => c.isTrial);
+  return [
+    `📅 <b>Подписки в ${monthIn}</b>`,
+    '',
+    `Спишут <b>${formatRub(total)}</b> — ${charges.length} ${plural(charges.length, ['списание', 'списания', 'списаний'])}:`,
+    ...lines,
+    ...(trials.length
+      ? ['', `🎁 Пробный период ${trials.map((t) => `«${escapeHtml(t.name)}»`).join(', ')} закончится в этом месяце — реши заранее, нужен ли он.`]
+      : []),
+    ...(savingsMonthlyKopecks > 0
+      ? ['', `💡 На пересечениях можно сэкономить ${formatRub(savingsMonthlyKopecks)} в месяц — подробности в приложении.`]
+      : []),
+    '',
+    'Перед каждым списанием напомню отдельно.',
+  ].join('\n');
+}
+
+export function snoozedText(name: string): string {
+  return `⏰ Хорошо, напомню о «${escapeHtml(name)}» завтра.`;
 }

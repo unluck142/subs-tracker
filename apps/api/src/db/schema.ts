@@ -58,6 +58,9 @@ export const users = pgTable('users', {
   lastReviewAt: timestamp('last_review_at', { withTimezone: true }),
   // Когда последний раз писал боту или открывал приложение — для статистики активности
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  // Сводка 1-го числа: «В ноябре спишут 2 688 ₽». lastDigestMonth — 'YYYY-MM', чтобы не отправить дважды
+  digestEnabled: boolean('digest_enabled').notNull().default(true),
+  lastDigestMonth: text('last_digest_month'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -116,6 +119,8 @@ export const subscriptions = pgTable(
     lastReviewedAt: timestamp('last_reviewed_at', { withTimezone: true }),
     usageConfirmedAt: timestamp('usage_confirmed_at', { withTimezone: true }),
     reviewMuted: boolean('review_muted').notNull().default(false),
+    // «Напомнить завтра»: до этой даты (по часовому поясу пользователя) напоминание не шлём
+    snoozeUntil: date('snooze_until', { mode: 'string' }),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     notes: text('notes'),
     // Общая подписка: по этому токену участники присоединяются через ссылку t.me/бот?start=join_<токен>
@@ -140,13 +145,15 @@ export const reminderLogs = pgTable(
       .notNull()
       .references(() => subscriptions.id, { onDelete: 'cascade' }),
     chargeDate: date('charge_date', { mode: 'string' }).notNull(),
+    // main — обычное напоминание, last — последнее для пробного периода (накануне)
+    kind: text('kind').notNull().default('main'),
     // Кому отправлено: владельцу или участнику общей подписки
     userId: integer('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('reminder_logs_sub_date_user_uq').on(t.subscriptionId, t.chargeDate, t.userId)],
+  (t) => [uniqueIndex('reminder_logs_sub_date_user_kind_uq').on(t.subscriptionId, t.chargeDate, t.userId, t.kind)],
 );
 
 /** Участники общей подписки (владелец — subscriptions.userId, сюда не входит) */

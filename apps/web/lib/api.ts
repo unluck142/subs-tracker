@@ -28,7 +28,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   me: () => request<Me>('/me'),
-  updateMe: (patch: Partial<Pick<Me, 'timezone' | 'reminderHour' | 'reviewsEnabled'>>) =>
+  updateMe: (patch: Partial<Pick<Me, 'timezone' | 'reminderHour' | 'reviewsEnabled' | 'digestEnabled'>>) =>
     request<Me>('/me', { method: 'PATCH', body: JSON.stringify(patch) }),
 
   catalog: (q = '') => request<CatalogItem[]>(`/catalog${q ? `?q=${encodeURIComponent(q)}` : ''}`),

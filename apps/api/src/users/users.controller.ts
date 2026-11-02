@@ -19,6 +19,10 @@ class UpdateSettingsDto {
   @IsOptional()
   @IsBoolean()
   reviewsEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  digestEnabled?: boolean;
 }
 
 function toDto(user: User) {
@@ -29,6 +33,7 @@ function toDto(user: User) {
     timezone: user.timezone,
     reminderHour: user.reminderHour,
     reviewsEnabled: user.reviewsEnabled,
+    digestEnabled: user.digestEnabled,
     isPremium: user.isPremium,
   };
 }

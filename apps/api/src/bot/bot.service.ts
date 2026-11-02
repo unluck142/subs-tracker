@@ -35,6 +35,9 @@ import {
   cancelledText,
   DELETED_TEXT,
   deleteConfirmText,
+  DigestCharge,
+  digestText,
+  snoozedText,
   DRAFT_EXPIRED_TEXT,
   FOREIGN_CURRENCY_TEXT,
   memberAlreadyText,
@@ -395,6 +398,19 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       }
     });
 
+    // «Напомнить завтра»: snz:ID
+    bot.callbackQuery(/^snz:(\d+)$/, async (ctx) => {
+      const user = await this.userFromCtx(ctx);
+      if (!user) return ctx.answerCallbackQuery();
+      try {
+        const sub = await this.subs.snooze(user, Number(ctx.match[1]));
+        await ctx.editMessageText(snoozedText(sub.name), { parse_mode: 'HTML' });
+        return ctx.answerCallbackQuery({ text: 'Напомню завтра' });
+      } catch {
+        return ctx.answerCallbackQuery({ text: 'Подписка не найдена — возможно, её уже удалили' });
+      }
+    });
+
     // Ответы на проверку пользования: rv:use|no|mute:ID
     bot.callbackQuery(/^rv:(use|no|mute):(\d+)$/, async (ctx) => {
       const [, action, idRaw] = ctx.match;
@@ -617,6 +633,13 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     return this.send(user, shareReminderText(sub), keyboard, `напоминание участнику ${sub.id}`);
   }
 
+  /** Сводка 1-го числа */
+  async sendDigest(user: User, month: string, charges: DigestCharge[], savingsKopecks: number): Promise<SendResult> {
+    const keyboard = new InlineKeyboard();
+    if (this.config.webAppUrl) keyboard.webApp('📱 Открыть подписки', this.config.webAppUrl);
+    return this.send(user, digestText(month, charges, savingsKopecks), keyboard, 'сводку месяца');
+  }
+
   /** Спросить, пользуется ли он подпиской */
   async sendReview(user: User, sub: SubscriptionView): Promise<SendResult> {
     const keyboard = new InlineKeyboard()
@@ -655,6 +678,8 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       .text('❌ Отменил', `cancel:${sub.id}`)
       .row()
       .text('📖 Как отменить', `howto:${sub.id}`);
+    // До списания ещё есть день — можно отложить
+    if (sub.daysLeft >= 1) keyboard.text('⏰ Напомнить завтра', `snz:${sub.id}`);
     if (this.config.webAppUrl) keyboard.row().webApp('📱 Все подписки', this.config.webAppUrl);
 
     return this.send(user, reminderText(sub), keyboard, `напоминание ${sub.id}`);

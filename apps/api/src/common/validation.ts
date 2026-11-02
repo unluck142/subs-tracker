@@ -17,6 +17,7 @@ const FIELD_LABELS: Record<string, string> = {
   timezone: 'Часовой пояс',
   reminderHour: 'Во сколько присылать',
   reviewsEnabled: 'Спрашивать, пользуюсь ли подписками',
+  digestEnabled: 'Сводка 1-го числа',
   paid: 'Отметка перевода',
 };
 

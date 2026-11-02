@@ -1,11 +1,12 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
-import { diffDays, parts, rollForward, todayInTz } from '../common/dates';
+import { addDays, diffDays, parts, rollForward, todayInTz } from '../common/dates';
 import { monthlyKopecks } from '../common/money';
 import { DB, Db } from '../db/db.module';
 import {
   Category,
   memberPayments,
+  reminderLogs,
   Service,
   services,
   Subscription,
@@ -303,6 +304,27 @@ export class SubscriptionsService {
   async markUsed(userId: number, id: number): Promise<void> {
     const sub = await this.findOwned(userId, id);
     await this.db.update(subscriptions).set({ usageConfirmedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+  }
+
+  /**
+   * «Напомнить завтра»: молчим до завтра и снимаем отметку об отправленном напоминании,
+   * чтобы завтра оно пришло снова. Возвращает подписку для текста ответа.
+   */
+  async snooze(user: User, id: number): Promise<SubscriptionView> {
+    const sub = await this.get(user, id);
+    const today = todayInTz(user.timezone);
+    await this.db.update(subscriptions).set({ snoozeUntil: addDays(today, 1) }).where(eq(subscriptions.id, id));
+    await this.db
+      .delete(reminderLogs)
+      .where(
+        and(
+          eq(reminderLogs.subscriptionId, id),
+          eq(reminderLogs.chargeDate, sub.nextChargeDate),
+          eq(reminderLogs.userId, user.id),
+          eq(reminderLogs.kind, 'main'),
+        ),
+      );
+    return sub;
   }
 
   /** «Не спрашивай про неё» в проверке пользования */

@@ -19,6 +19,7 @@ export interface Me {
   timezone: string;
   reminderHour: number;
   reviewsEnabled: boolean;
+  digestEnabled: boolean;
   isPremium: boolean;
 }
 
