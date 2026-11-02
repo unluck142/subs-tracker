@@ -1,4 +1,4 @@
-import { howToCancelText, reminderText } from '../bot/messages';
+import { howToCancelText, listText, reminderText } from '../bot/messages';
 import type { SubscriptionView } from '../subscriptions/subscriptions.service';
 import { isReminderDue } from './reminders.logic';
 
@@ -61,6 +61,15 @@ describe('тексты бота', () => {
     expect(text).toContain('Завтра спишут <b>299 ₽</b>');
     expect(text).toContain('Okko &lt;script&gt;');
     expect(text).not.toContain('<script>');
+  });
+
+  it('/list: у общей подписки — своя доля, как и в итоге', () => {
+    const shared = {
+      ...sub,
+      sharing: { membersCount: 2, shareKopecks: 10000, ownerName: null, ownerUsername: null, paidCount: 0, paid: true },
+    };
+    const stats = { monthlyKopecks: 10000, yearlyKopecks: 120000 } as never;
+    expect(listText([shared], stats)).toContain('100 ₽ из 299 ₽ 👥');
   });
 
   it('подсказывает, если подписка уже входит в другую', () => {

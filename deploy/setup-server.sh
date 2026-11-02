@@ -44,6 +44,8 @@ DATABASE_URL=postgresql://$DB_USER:$DB_PASS@localhost:5432/$DB_NAME
 PORT=4000
 BOT_TOKEN=
 WEBAPP_URL=https://$DOMAIN/app
+# Telegram ID владельцев бота через запятую: команда /stats и сообщения об ошибках
+ADMIN_TELEGRAM_IDS=
 EOF
   echo "NEXT_PUBLIC_BOT_USERNAME=nespishut_bot" > "$APP_DIR/apps/web/.env.local"
   chown "$APP_USER:$APP_USER" "$ENV_FILE" "$APP_DIR/apps/web/.env.local"

@@ -77,10 +77,11 @@ export function listText(subs: SubscriptionView[], stats: Stats): string {
   }
   const lines = subs.map((s) => {
     const trial = s.isTrial ? ' 🎁' : '';
-    return `• <b>${escapeHtml(s.name)}</b>${trial} — ${formatRub(s.priceKopecks)} ${periodLabel(
-      s.periodUnit,
-      s.periodCount,
-    )}, ${inDaysLabel(s.daysLeft)}`;
+    // У общей подписки показываем свою долю — из неё же считается итог «в месяц»
+    const price = s.sharing
+      ? `${formatRub(s.sharing.shareKopecks)} из ${formatRub(s.priceKopecks)} 👥`
+      : formatRub(s.priceKopecks);
+    return `• <b>${escapeHtml(s.name)}</b>${trial} — ${price} ${periodLabel(s.periodUnit, s.periodCount)}, ${inDaysLabel(s.daysLeft)}`;
   });
   return [
     `<b>Твои подписки</b> (${subs.length})`,

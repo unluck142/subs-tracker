@@ -47,9 +47,11 @@ export default function ImportStatement({
     setError(null);
     setPhase('reading');
     try {
-      const [lines, items] = await Promise.all([readStatementFile(file), catalog.current ?? api.catalog()]);
+      // Если каталог не загрузился при открытии экрана (моргнул интернет) — пробуем ещё раз
+      const items = (catalog.current ?? Promise.reject()).catch(() => (catalog.current = api.catalog()));
+      const [lines, catalogItems] = await Promise.all([readStatementFile(file), items]);
       const active = existing.filter((s) => s.status === 'ACTIVE');
-      const result = analyzeStatement(lines, items, active, todayLocal());
+      const result = analyzeStatement(lines, catalogItems, active, todayLocal());
       if (result.transactions.length === 0) {
         throw new StatementReadError(
           'Не нашёл в файле ни одной операции. Это точно выписка по карте? Попробуй скачать её в PDF заново.',
