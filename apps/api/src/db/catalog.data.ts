@@ -47,6 +47,7 @@ export const CATALOG: CatalogEntry[] = [
   { slug: 'kion', name: 'KION', category: 'VIDEO', color: '#7A3CF5', aliases: 'кион, мтс', merchants: 'KION, КИОН' },
   { slug: 'amediateka', name: 'Амедиатека', category: 'VIDEO', color: '#0F2C59', aliases: 'amediateka', merchants: 'AMEDIATEKA, АМЕДИАТЕКА' },
   { slug: 'more-tv', name: 'more.tv', category: 'VIDEO', color: '#00B4FF', aliases: 'мор тв, моретв', merchants: 'MORE.TV, MORETV' },
+  { slug: 'smotreshka', name: 'Смотрёшка', category: 'VIDEO', color: '#E4003A', aliases: 'смотрешка, smotreshka, онлайн тв, тв', merchants: 'SMOTRESHKA, СМОТРЕШКА' },
 
   // Музыка и книги
   { slug: 'vk-music', name: 'VK Музыка', category: 'MUSIC', color: '#0077FF', aliases: 'вк музыка, vk music, boom, бум', popular: true, merchants: 'VK MUSIC, VK MUZYKA, ВК МУЗЫКА, BOOM' },

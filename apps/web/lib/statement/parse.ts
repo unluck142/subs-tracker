@@ -79,7 +79,7 @@ const CARD_MASK = /\d{0,6}[\s]?\*{2,}[\s]?\d{4}|\*\d{4}/g;
 
 /** Строки-«шум»: шапки таблиц, колонтитулы, реквизиты банка */
 const NOISE_LINE =
-  /ДАТА ОПЕРАЦИИ|ДАТА ОБРАБОТКИ|КОД АВТОРИЗАЦИИ|ОСТАТОК|СТРАНИЦА|ПРОДОЛЖЕНИЕ|СУММА В ВАЛЮТЕ|ОПИСАНИЕ ОПЕРАЦИИ|ВЫПИСКА|ИТОГО|ЛИЦЕНЗИ|WWW\.|ДАТА СПИСАНИЯ|НОМЕР КАРТЫ|СПРАВКА|ВРЕМЯ ОПЕРАЦИИ|СУММА ОПЕРАЦИИ|ДВИЖЕНИ|ПОСТУПЛЕНИЯ|ДАТА ПРОВОДКИ|КОД ОПЕРАЦИИ|УПОЛНОМОЧЕННОЕ ЛИЦО|ПОДПИСЬ СОТРУДНИКА/u;
+  /ДАТА ОПЕРАЦИИ|ДАТА ОБРАБОТКИ|КОД АВТОРИЗАЦИИ|ОСТАТОК|СТРАНИЦА|ПРОДОЛЖЕНИЕ|СУММА В ВАЛЮТЕ|ОПИСАНИЕ ОПЕРАЦИИ|ВЫПИСКА|ИТОГО|ЛИЦЕНЗИ|WWW\.|ДАТА СПИСАНИЯ|НОМЕР КАРТЫ|СПРАВКА|ВРЕМЯ ОПЕРАЦИИ|СУММА ОПЕРАЦИИ|ДВИЖЕНИ|ПОСТУПЛЕНИЯ|ДАТА ПРОВОДКИ|КОД ОПЕРАЦИИ|УПОЛНОМОЧЕННОЕ ЛИЦО|ПОДПИСЬ СОТРУДНИКА|ДАТА ФОРМИРОВАНИЯ|СЕРТИФИКАТ|ЭЛЕКТРОННОЙ ПОДПИС|ДЕЙСТВИТЕЛЕН|ДАТА ПОДПИСИ|РАСШИФРОВКА ОПЕРАЦИЙ/u;
 
 /** Операции, которые точно не подписки */
 const NOT_SUBSCRIPTION =
@@ -334,6 +334,9 @@ interface PeriodRule {
   minOccurrences: number;
 }
 
+/** Меньше 100 ₽ у незнакомого продавца — подписка, только если повторилась хотя бы трижды */
+const SMALL_AMOUNT_KOPECKS = 100_00;
+
 const PERIOD_RULES: PeriodRule[] = [
   { unit: 'WEEK', count: 1, days: 7, tolerance: 1, minOccurrences: 3 },
   { unit: 'MONTH', count: 1, days: 30.44, tolerance: 4, minOccurrences: 2 },
@@ -421,8 +424,13 @@ export function findCandidates(
     const consistent = cluster.length / unique.length >= 0.5;
     const rule = consistent ? detectPeriod(cluster.map((t) => t.date)) : null;
     // Незнакомому продавцу с двумя списаниями верим, только если суммы совпали до рубля
+    // Мелкие суммы (проезд, кофе) часто совпадают случайно — незнакомому продавцу нужно хотя бы 3 повтора
+    const smallAmount = cluster.length > 0 && cluster[cluster.length - 1].amountKopecks < SMALL_AMOUNT_KOPECKS;
     const strictEnough =
-      rule && (cluster.length >= 3 || service || Math.abs(cluster[0].amountKopecks - cluster[1].amountKopecks) <= 100);
+      rule &&
+      (cluster.length >= 3 ||
+        service ||
+        (!smallAmount && Math.abs(cluster[0].amountKopecks - cluster[1].amountKopecks) <= 100));
 
     if (!(rule && strictEnough) && !service) continue;
 

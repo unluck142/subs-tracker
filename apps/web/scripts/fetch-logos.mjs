@@ -19,6 +19,7 @@ const DOMAINS = {
   premier: 'premier.one',
   kion: 'kion.ru',
   amediateka: 'amediateka.ru',
+  smotreshka: 'smotreshka.tv',
   'vk-music': 'vk.com',
   zvuk: 'zvuk.com',
   litres: 'litres.ru',

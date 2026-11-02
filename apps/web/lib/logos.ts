@@ -19,6 +19,7 @@ export const LOGOS = new Set<string>([
   'ps-plus',
   'sberprime',
   'skyeng',
+  'smotreshka',
   'start',
   'tbank-pro',
   'telegram-premium',
