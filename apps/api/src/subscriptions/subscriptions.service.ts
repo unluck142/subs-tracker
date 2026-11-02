@@ -170,6 +170,16 @@ export class SubscriptionsService {
     };
   }
 
+  /** Активная подписка на тот же сервис (или своя с таким же названием) — чтобы не завести дубль */
+  async findActiveMatch(user: User, serviceId: number | null, name: string): Promise<SubscriptionView | null> {
+    const active = await this.list(user);
+    const lower = name.trim().toLowerCase();
+    return (
+      active.find((s) => (serviceId ? s.serviceId === serviceId : !s.serviceId && s.name.toLowerCase() === lower)) ??
+      null
+    );
+  }
+
   async findOwned(userId: number, id: number): Promise<SubscriptionWithService> {
     const sub = await this.db.query.subscriptions.findFirst({
       where: and(eq(subscriptions.id, id), eq(subscriptions.userId, userId)),

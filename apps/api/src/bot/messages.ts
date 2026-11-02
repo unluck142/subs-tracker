@@ -25,6 +25,8 @@ export function welcomeText(firstName: string | null, hasWebApp: boolean): strin
     '• Пробные периоды — предупрежу, пока ещё не поздно отменить',
     '• Сколько уходит на подписки в месяц и в год',
     '',
+    'Подписку можно добавить в приложении, написать мне текстом («Okko 399 15 числа») или переслать СМС банка о списании.',
+    '',
     hasWebApp
       ? 'Нажми кнопку ниже, чтобы добавить первую подписку.'
       : 'Мини-приложение пока не настроено (нет WEBAPP_URL). Пока доступна команда /list.',
@@ -38,7 +40,9 @@ export const HELP_TEXT = [
   '/list — список подписок и сумма в месяц',
   '/help — эта справка',
   '',
-  'Подписки добавляются и редактируются в приложении — кнопка «Подписки» слева от поля ввода.',
+  'Подписки удобно смотреть и редактировать в приложении — кнопка «Подписки» слева от поля ввода.',
+  '',
+  'А ещё можно просто <b>написать мне</b> подписку («Okko 399 15 числа») или <b>переслать СМС банка</b> о списании.',
 ].join('\n');
 
 export function reminderText(sub: SubscriptionView): string {
@@ -121,3 +125,86 @@ export function howToCancelText(name: string, cancelSteps: string | null): strin
   );
   return parts.join('\n');
 }
+
+// ─── Подписка текстом и пересланные СМС банка ───────────────────────────────
+
+const longDate = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+
+/** '2026-11-15' → «15 ноября» */
+export function formatDateLong(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return longDate.format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+export interface DraftView {
+  kind: 'bank' | 'text';
+  name: string;
+  priceKopecks: number;
+  periodUnit: SubscriptionView['periodUnit'];
+  periodCount: number;
+  nextChargeDate: string;
+  isTrial: boolean;
+}
+
+export function draftText(d: DraftView): string {
+  const name = `<b>${escapeHtml(d.name)}</b>`;
+  const price = `${formatRub(d.priceKopecks)} ${periodLabel(d.periodUnit, d.periodCount)}`;
+  const head =
+    d.kind === 'bank'
+      ? `💳 Вижу списание <b>${formatRub(d.priceKopecks)}</b> за ${name}. Добавить в подписки?`
+      : `Добавить подписку?`;
+  const lines = [head, ''];
+  if (d.kind === 'text') lines.push(`${name} — ${price}`);
+  lines.push(
+    d.isTrial
+      ? `🎁 Пробный период закончится <b>${formatDateLong(d.nextChargeDate)}</b>`
+      : `Следующее списание: <b>${formatDateLong(d.nextChargeDate)}</b>`,
+    '',
+    'Напомню за день. Дату и цену можно поправить в приложении.',
+  );
+  return lines.join('\n');
+}
+
+export function addedText(name: string, monthlyTotal: number): string {
+  return `✅ Добавил «${escapeHtml(name)}». Теперь на подписки уходит <b>${formatRub(monthlyTotal)}</b> в месяц.`;
+}
+
+/** Цена в сообщении отличается от сохранённой — подписка подорожала или подешевела */
+export function priceChangedText(sub: SubscriptionView, newPriceKopecks: number): string {
+  const diff = newPriceKopecks - sub.priceKopecks;
+  const up = diff > 0;
+  const perYear = Math.abs(diff) * (sub.periodUnit === 'YEAR' ? 1 : sub.periodUnit === 'WEEK' ? 52 : 12 / sub.periodCount);
+  return [
+    `${up ? '📈' : '📉'} «${escapeHtml(sub.name)}» ${up ? 'подорожала' : 'подешевела'}: было <b>${formatRub(sub.priceKopecks)}</b>, теперь <b>${formatRub(newPriceKopecks)}</b>.`,
+    up ? `Это ещё ${formatRub(perYear)} в год.` : `Экономия ${formatRub(perYear)} в год.`,
+    '',
+    'Обновить цену?',
+  ].join('\n');
+}
+
+export function priceUpdatedText(name: string, priceKopecks: number): string {
+  return `👌 Обновил: «${escapeHtml(name)}» теперь ${formatRub(priceKopecks)}.`;
+}
+
+export function alreadyTrackedText(sub: SubscriptionView, fromBank: boolean): string {
+  return fromBank
+    ? `✅ Списание за «${escapeHtml(sub.name)}» — ${formatRub(sub.priceKopecks)}, как и ожидалось. Следующее — ${formatDateLong(sub.nextChargeDate)}.`
+    : `«${escapeHtml(sub.name)}» уже есть в твоём списке: ${formatRub(sub.priceKopecks)} ${periodLabel(sub.periodUnit, sub.periodCount)}, следующее списание ${formatDateLong(sub.nextChargeDate)}.`;
+}
+
+export function askPriceText(name: string): string {
+  return `Сколько стоит «${escapeHtml(name)}»? Напиши, например: <code>${escapeHtml(name)} 299 15 числа</code>`;
+}
+
+export const ADD_BY_TEXT_HINT = [
+  'Можно добавить подписку прямо здесь:',
+  '',
+  '✍️ <b>Напиши</b>, например:',
+  '<code>Okko 399 15 числа</code>',
+  '<code>Netflix 999 в год 20 ноября</code>',
+  '<code>пробный Кинопоиск 299 до 05.12</code>',
+  '',
+  '📩 Или <b>перешли СМС/пуш банка</b> о списании — я узнаю сервис и сумму.',
+].join('\n');
+
+export const DRAFT_EXPIRED_TEXT = 'Это сообщение устарело — пришли подписку ещё раз.';

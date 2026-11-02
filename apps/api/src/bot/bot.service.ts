@@ -1,19 +1,31 @@
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { Bot, Context, GrammyError, InlineKeyboard } from 'grammy';
 import { SocksProxyAgent } from 'socks-proxy-agent';
+import { CatalogService } from '../catalog/catalog.service';
+import { todayInTz } from '../common/dates';
 import { AppConfig, CONFIG } from '../config';
 import type { User } from '../db/schema';
 import { SubscriptionsService, SubscriptionView } from '../subscriptions/subscriptions.service';
 import { UsersService } from '../users/users.service';
+import { DraftStore } from './drafts';
 import {
+  ADD_BY_TEXT_HINT,
+  addedText,
+  alreadyTrackedText,
+  askPriceText,
   cancelledText,
+  DRAFT_EXPIRED_TEXT,
+  draftText,
   HELP_TEXT,
+  priceChangedText,
+  priceUpdatedText,
   howToCancelText,
   keepText,
   listText,
   reminderText,
   welcomeText,
 } from './messages';
+import { parseMessage } from './parse-message';
 
 export type SendResult = 'sent' | 'blocked' | 'failed';
 
@@ -21,11 +33,13 @@ export type SendResult = 'sent' | 'blocked' | 'failed';
 export class BotService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(BotService.name);
   private bot: Bot | null = null;
+  private readonly drafts = new DraftStore();
 
   constructor(
     @Inject(CONFIG) private readonly config: AppConfig,
     private readonly users: UsersService,
     private readonly subs: SubscriptionsService,
+    private readonly catalog: CatalogService,
   ) {}
 
   get enabled(): boolean {
@@ -163,9 +177,101 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       }
     });
 
+    // Подписка текстом («Okko 399 15 числа») или пересланное СМС банка о списании
+    bot.on('message:text', async (ctx) => {
+      if (ctx.message.text.startsWith('/')) {
+        return ctx.reply(HELP_TEXT, { parse_mode: 'HTML' });
+      }
+      const user = await this.userFromCtx(ctx);
+      if (!user) return;
+      await this.handleSubscriptionMessage(ctx, user, ctx.message.text);
+    });
+
+    // Кнопки под предложением добавить/обновить: d:<ключ черновика>:add|price|no
+    bot.callbackQuery(/^d:([\w-]+):(add|price|no)$/, async (ctx) => {
+      const [, key, action] = ctx.match;
+      const user = await this.userFromCtx(ctx);
+      if (!user) return ctx.answerCallbackQuery();
+      const draft = this.drafts.take(key, user.id);
+      if (!draft) {
+        await ctx.editMessageText(DRAFT_EXPIRED_TEXT).catch(() => undefined);
+        return ctx.answerCallbackQuery();
+      }
+      const p = draft.parsed;
+      try {
+        if (action === 'add') {
+          await this.subs.create(user, {
+            serviceId: p.service?.id,
+            customName: p.service ? undefined : p.name,
+            price: p.priceKopecks / 100,
+            periodUnit: p.periodUnit,
+            periodCount: p.periodCount,
+            nextChargeDate: p.nextChargeDate,
+            isTrial: p.isTrial,
+            remindDaysBefore: 1,
+          });
+          const stats = await this.subs.stats(user);
+          await ctx.editMessageText(addedText(p.name, stats.monthlyKopecks), {
+            parse_mode: 'HTML',
+            reply_markup: this.openAppKeyboard(),
+          });
+          return ctx.answerCallbackQuery({ text: 'Добавил ✅' });
+        }
+        if (action === 'price' && draft.existingId) {
+          const sub = await this.subs.update(user, draft.existingId, {
+            price: p.priceKopecks / 100,
+            // Из СМС банка знаем, что списание было сегодня — заодно сдвигаем дату следующего
+            ...(p.kind === 'bank' ? { nextChargeDate: p.nextChargeDate } : {}),
+          });
+          await ctx.editMessageText(priceUpdatedText(sub.name, sub.priceKopecks), { parse_mode: 'HTML' });
+          return ctx.answerCallbackQuery({ text: 'Цена обновлена' });
+        }
+        await ctx.editMessageText(draft.existingId ? 'Ок, оставил прежнюю цену.' : 'Ок, не добавляю.');
+        return ctx.answerCallbackQuery();
+      } catch (e) {
+        this.logger.warn(`Черновик ${action} не сохранился: ${(e as Error).message}`);
+        return ctx.answerCallbackQuery({ text: 'Не получилось — попробуй ещё раз' });
+      }
+    });
+
     bot.on('message', (ctx) =>
-      ctx.reply('Управлять подписками удобнее в приложении 👇', { reply_markup: this.openAppKeyboard() }),
+      ctx.reply(ADD_BY_TEXT_HINT, { parse_mode: 'HTML', reply_markup: this.openAppKeyboard() }),
     );
+  }
+
+  private async handleSubscriptionMessage(ctx: Context, user: User, text: string) {
+    const today = todayInTz(user.timezone);
+    const outcome = parseMessage(text, await this.catalog.refs(), today);
+    if (!outcome.ok) {
+      if (outcome.reason === 'no-price' && outcome.name) {
+        return ctx.reply(askPriceText(outcome.name), { parse_mode: 'HTML' });
+      }
+      return ctx.reply(ADD_BY_TEXT_HINT, { parse_mode: 'HTML', reply_markup: this.openAppKeyboard() });
+    }
+
+    const p = outcome.parsed;
+    const existing = await this.subs.findActiveMatch(user, p.service?.id ?? null, p.name);
+    if (existing && existing.priceKopecks !== p.priceKopecks) {
+      const key = this.drafts.put({ userId: user.id, parsed: p, existingId: existing.id });
+      return ctx.reply(priceChangedText(existing, p.priceKopecks), {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().text('✅ Обновить цену', `d:${key}:price`).text('Оставить', `d:${key}:no`),
+      });
+    }
+    if (existing) {
+      // Списание прошло как ожидалось — следующая дата через период
+      const fresh =
+        p.kind === 'bank' && p.nextChargeDate > existing.nextChargeDate
+          ? await this.subs.update(user, existing.id, { nextChargeDate: p.nextChargeDate })
+          : existing;
+      return ctx.reply(alreadyTrackedText(fresh, p.kind === 'bank'), { parse_mode: 'HTML' });
+    }
+
+    const key = this.drafts.put({ userId: user.id, parsed: p, existingId: null });
+    return ctx.reply(draftText(p), {
+      parse_mode: 'HTML',
+      reply_markup: new InlineKeyboard().text('✅ Добавить', `d:${key}:add`).text('❌ Не надо', `d:${key}:no`),
+    });
   }
 
   private async userFromCtx(ctx: Context): Promise<User | null> {

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, avg, count, desc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { DB, Db } from '../db/db.module';
+import type { CatalogRef } from '../bot/parse-message';
 import { Service, services, subscriptions } from '../db/schema';
 
 /** Сколько подписок нужно, чтобы доверять средней цене от пользователей */
@@ -40,6 +41,24 @@ export class CatalogService {
 
     const prices = await this.averagePrices(rows.filter((r) => r.defaultPriceKopecks == null).map((r) => r.id));
     return rows.map((r) => toItem(r, prices.get(`${r.id}:${r.periodUnit}`) ?? null));
+  }
+
+  private refsCache: { at: number; refs: CatalogRef[] } | null = null;
+
+  /** Каталог для распознавания сервисов в сообщениях. Меняется только при db:seed — кэшируем на 10 минут. */
+  async refs(): Promise<CatalogRef[]> {
+    if (this.refsCache && Date.now() - this.refsCache.at < 10 * 60_000) return this.refsCache.refs;
+    const rows = await this.db.select().from(services);
+    const refs = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      periodUnit: r.periodUnit,
+      periodCount: r.periodCount,
+      patterns: [r.name, ...splitList(r.merchantPatterns)],
+      aliases: splitList(r.searchAliases),
+    }));
+    this.refsCache = { at: Date.now(), refs };
+    return refs;
   }
 
   async findById(id: number): Promise<Service | undefined> {
