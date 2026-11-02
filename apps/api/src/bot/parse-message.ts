@@ -32,7 +32,13 @@ export interface ParsedMessage {
 export type ParseOutcome =
   | { ok: true; parsed: ParsedMessage }
   /** no-price — понятно что, но не понятно сколько; unknown — сообщение не про подписку */
-  | { ok: false; reason: 'no-price' | 'unknown'; name?: string };
+  | { ok: false; reason: 'no-price' | 'unknown' | 'currency'; name?: string };
+
+/** Больше миллиона рублей — опечатка, а не подписка (и API такую цену не примет) */
+const MAX_PRICE_KOPECKS = 1_000_000 * 100;
+
+/** «4.99$», «15 USD», «€10», «10 евро» — валюту не пересчитываем, просим сумму в рублях */
+const FOREIGN_CURRENCY = /\d\s*(?:\$|€|usd|eur|долл|евро)|(?:\$|€)\s*\d/i;
 
 const MONTHS: Record<string, number> = {
   январ: 1, феврал: 2, март: 3, апрел: 4, ма: 5, июн: 6, июл: 7, август: 8, сентябр: 9, октябр: 10, ноябр: 11, декабр: 12,
@@ -128,6 +134,7 @@ export function parseMessage(raw: string, catalog: CatalogRef[], today: string):
   if (!text || text.length > 600) return { ok: false, reason: 'unknown' };
   // Перевод, возврат, пополнение — не подписка, даже если похоже на СМС банка
   if (/перевод|возврат|пополнен|зачислен|снятие/i.test(text)) return { ok: false, reason: 'unknown' };
+  if (FOREIGN_CURRENCY.test(text)) return { ok: false, reason: 'currency' };
 
   const isBank = BANK_MARKERS.test(text) && MONEY_WITH_CURRENCY.test(text);
   MONEY_WITH_CURRENCY.lastIndex = 0;
@@ -142,6 +149,7 @@ function parseBank(text: string, service: CatalogRef | null, today: string): Par
   const money = [...main.matchAll(MONEY_WITH_CURRENCY)];
   if (money.length === 0) return { ok: false, reason: 'no-price', name: service?.name };
   const priceKopecks = toKopecks(money[0][1], money[0][2]);
+  if (priceKopecks <= 0 || priceKopecks > MAX_PRICE_KOPECKS) return { ok: false, reason: 'no-price', name: service?.name };
 
   let name = service?.name ?? null;
   if (!name) {
@@ -208,13 +216,21 @@ function parseText(text: string, service: CatalogRef | null, today: string): Par
       rest = rest.replace(day[0], ' ');
     }
   }
-  if (/завтра/i.test(rest)) {
+  // «оплатил вчера», «списали сегодня» — это прошедшее списание, следующее будет через период
+  const paidVerb = /оплатил|заплатил|списал|продлил/i.test(text);
+  let chargedOn: string | null = null;
+  if (/вчера/i.test(rest)) {
+    chargedOn = addDays(today, -1);
+    rest = rest.replace(/вчера/i, ' ');
+  } else if (/завтра/i.test(rest)) {
     date = date ?? addDays(today, 1);
     rest = rest.replace(/завтра/i, ' ');
   } else if (/сегодня/i.test(rest)) {
-    date = date ?? today;
+    if (paidVerb) chargedOn = today;
+    else date = date ?? today;
     rest = rest.replace(/сегодня/i, ' ');
   }
+  if (paidVerb && !date && !chargedOn) chargedOn = today;
 
   const period = detectPeriod(rest);
   rest = rest.replace(/полгода|квартал|ежемесячно|ежегодно|еженедельно|(в|за|\/)\s*(год|недел[а-я]*|мес[а-я]*)|раз в [а-я]+|каждый месяц|\d\s*мес[а-я]*/gi, ' ');
@@ -241,7 +257,7 @@ function parseText(text: string, service: CatalogRef | null, today: string): Par
   const name = service?.name ?? (customName || null);
 
   if (!name) return { ok: false, reason: 'unknown' };
-  if (priceKopecks === null || priceKopecks <= 0) {
+  if (priceKopecks === null || priceKopecks <= 0 || priceKopecks > MAX_PRICE_KOPECKS) {
     // Цену переспрашиваем, только если узнали сервис, — иначе это просто разговор («привет»)
     return service ? { ok: false, reason: 'no-price', name } : { ok: false, reason: 'unknown' };
   }
@@ -257,8 +273,8 @@ function parseText(text: string, service: CatalogRef | null, today: string): Par
       priceKopecks,
       periodUnit: unit,
       periodCount: count,
-      // Дату не назвали — считаем, что списание через период от сегодня; пользователь поправит
-      nextChargeDate: date ?? addPeriod(today, unit, count, parts(today).d),
+      // Дату не назвали — считаем, что списание через период от сегодня (или от «вчера»); пользователь поправит
+      nextChargeDate: date ?? addPeriod(chargedOn ?? today, unit, count, parts(chargedOn ?? today).d),
       isTrial,
     },
   };

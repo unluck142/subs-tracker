@@ -107,6 +107,11 @@ function SubRow({ sub, onOpen }: { sub: Subscription; onOpen: () => void }) {
   );
 }
 
+/** На главной нечего показать — вместо сводки приглашение добавить первую подписку */
+export function isHomeEmpty(stats: Stats, subs: Subscription[]): boolean {
+  return stats.activeCount === 0 && stats.savedMonthlyKopecks === 0 && subs.length === 0;
+}
+
 export default function Home({
   subs,
   stats,
@@ -127,8 +132,8 @@ export default function Home({
   const active = subs.filter((s) => s.status === 'ACTIVE');
   const cancelled = subs.filter((s) => s.status === 'CANCELLED');
 
-  // Пустой экран — только для совсем нового пользователя. Если всё отменил, показываем экономию.
-  if (stats.activeCount === 0 && stats.savedMonthlyKopecks === 0 && !showCancelled) {
+  // Пустой экран — только когда совсем ничего нет. Если всё отменил, показываем экономию.
+  if (isHomeEmpty(stats, subs)) {
     return (
       <div className="card empty">
         <div className="empty-emoji">🧾</div>

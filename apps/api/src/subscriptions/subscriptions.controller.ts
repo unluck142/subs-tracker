@@ -12,14 +12,20 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser, TelegramAuthGuard } from '../auth/telegram-auth.guard';
+import { BotService } from '../bot/bot.service';
 import type { User } from '../db/schema';
+import { SharingService } from '../sharing/sharing.service';
 import { CreateSubscriptionDto, UpdateSubscriptionDto } from './dto';
 import { SubscriptionsService } from './subscriptions.service';
 
 @Controller('subscriptions')
 @UseGuards(TelegramAuthGuard)
 export class SubscriptionsController {
-  constructor(private readonly subs: SubscriptionsService) {}
+  constructor(
+    private readonly subs: SubscriptionsService,
+    private readonly sharing: SharingService,
+    private readonly bot: BotService,
+  ) {}
 
   @Get()
   list(@CurrentUser() user: User, @Query('all') all?: string) {
@@ -48,7 +54,8 @@ export class SubscriptionsController {
 
   @Post(':id/cancel')
   async cancel(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
-    await this.subs.cancel(user.id, id);
+    const sub = await this.subs.cancel(user.id, id);
+    await this.bot.notifySharedEnded(this.subs.nameOf(sub), user, await this.sharing.memberUsers(id), false);
     return this.subs.get(user, id);
   }
 
@@ -59,7 +66,11 @@ export class SubscriptionsController {
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
-    return this.subs.remove(user, id);
+  async remove(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
+    const sub = await this.subs.findOwned(user.id, id);
+    // Участников берём до удаления — потом они удалятся вместе с подпиской
+    const members = await this.sharing.memberUsers(id);
+    await this.subs.remove(user, id);
+    await this.bot.notifySharedEnded(this.subs.nameOf(sub), user, members, true);
   }
 }

@@ -21,6 +21,9 @@ import {
   askPriceText,
   cancelledText,
   DRAFT_EXPIRED_TEXT,
+  FOREIGN_CURRENCY_TEXT,
+  memberAlreadyText,
+  sharedEndedText,
   draftText,
   HELP_TEXT,
   joinedText,
@@ -77,6 +80,10 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     if (proxy) this.logger.log(`Запросы к Telegram идут через прокси ${proxy}`);
     this.registerHandlers(this.bot);
     this.bot.catch((err) => {
+      // Повторное нажатие кнопки («message is not modified») и запоздалый ответ на кнопку — не ошибки
+      if (err.error instanceof GrammyError && /message is not modified|query is too old/.test(err.error.description)) {
+        return;
+      }
       this.logger.error(`Ошибка в обработчике бота: ${err.message}`, err.stack);
       void this.alertAdmins('бот', err.error ?? err);
       // Пользователь не должен оставаться без ответа
@@ -132,6 +139,12 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private registerHandlers(bot: Bot) {
+    // Бот работает только в личных сообщениях: в группе он отвечал бы на каждое сообщение
+    bot.use(async (ctx, next) => {
+      if (ctx.chat && ctx.chat.type !== 'private') return;
+      await next();
+    });
+
     bot.command('start', async (ctx) => {
       if (!ctx.from) return;
       const user = await this.users.upsertFromTelegram(ctx.from, { unblock: true });
@@ -219,7 +232,13 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
             return ctx.answerCallbackQuery({ text: 'Оставляем 👌' });
           }
           case 'cancel': {
-            await this.subs.cancel(user.id, id);
+            const cancelled = await this.subs.cancel(user.id, id);
+            await this.notifySharedEnded(
+              this.subs.nameOf(cancelled),
+              user,
+              await this.sharing.memberUsers(id),
+              false,
+            );
             const [sub, stats] = await Promise.all([this.subs.get(user, id), this.subs.stats(user)]);
             await ctx.editMessageText(cancelledText(sub, stats.savedMonthlyKopecks), {
               parse_mode: 'HTML',
@@ -298,8 +317,8 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       if (!user) return ctx.answerCallbackQuery();
       const draft = this.drafts.take(key, user.id);
       if (!draft) {
-        await ctx.editMessageText(DRAFT_EXPIRED_TEXT).catch(() => undefined);
-        return ctx.answerCallbackQuery();
+        // Сообщение не трогаем: при двойном нажатии там уже «✅ Добавил», затирать его нельзя
+        return ctx.answerCallbackQuery({ text: DRAFT_EXPIRED_TEXT, show_alert: true });
       }
       const p = draft.parsed;
       try {
@@ -350,11 +369,14 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       if (outcome.reason === 'no-price' && outcome.name) {
         return ctx.reply(askPriceText(outcome.name), { parse_mode: 'HTML' });
       }
+      if (outcome.reason === 'currency') return ctx.reply(FOREIGN_CURRENCY_TEXT, { parse_mode: 'HTML' });
       return ctx.reply(ADD_BY_TEXT_HINT, { parse_mode: 'HTML', reply_markup: this.openAppKeyboard() });
     }
 
     const p = outcome.parsed;
     const existing = await this.subs.findActiveMatch(user, p.service?.id ?? null, p.name);
+    // Чужую общую подписку менять нельзя — просто напоминаем, что она уже есть
+    if (existing?.role === 'member') return ctx.reply(memberAlreadyText(existing), { parse_mode: 'HTML' });
     if (existing && existing.priceKopecks !== p.priceKopecks) {
       const key = this.drafts.put({ userId: user.id, parsed: p, existingId: existing.id });
       return ctx.reply(priceChangedText(existing, p.priceKopecks), {
@@ -381,7 +403,9 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
 
   private async userFromCtx(ctx: Context): Promise<User | null> {
     if (!ctx.from) return null;
-    return this.users.upsertFromTelegram(ctx.from);
+    // Раз пишет или жмёт кнопки — бот не заблокирован. Иначе после разблокировки без /start
+    // напоминания так и не возобновились бы.
+    return this.users.upsertFromTelegram(ctx.from, { unblock: true });
   }
 
   private async showJoinOffer(ctx: Context, user: User, token: string) {
@@ -416,6 +440,16 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       await this.bot.api
         .sendMessage(id, adminAlertText(where, message), { parse_mode: 'HTML' })
         .catch((e) => this.logger.warn(`Не удалось отправить ошибку админу ${id}: ${(e as Error).message}`));
+    }
+  }
+
+  /**
+   * Владелец отменил или удалил общую подписку — сообщаем участникам, чтобы они не ждали напоминаний.
+   * Участников нужно получить до удаления: после него записи пропадут каскадом.
+   */
+  async notifySharedEnded(name: string, owner: User, members: User[], deleted: boolean): Promise<void> {
+    for (const member of members) {
+      await this.notify(member, sharedEndedText(name, displayName(owner), deleted));
     }
   }
 

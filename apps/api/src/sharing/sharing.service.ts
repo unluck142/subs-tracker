@@ -170,6 +170,16 @@ export class SharingService {
     return { info: { ...info, membersCount: info.membersCount - 1 }, member: memberUser };
   }
 
+  /** Пользователи-участники подписки (для уведомлений) */
+  async memberUsers(subscriptionId: number): Promise<User[]> {
+    const rows = await this.db
+      .select({ user: users })
+      .from(subscriptionMembers)
+      .innerJoin(users, eq(users.id, subscriptionMembers.userId))
+      .where(eq(subscriptionMembers.subscriptionId, subscriptionId));
+    return rows.map((r) => r.user);
+  }
+
   async findMember(subscriptionId: number, userId: number) {
     return this.db.query.subscriptionMembers.findFirst({
       where: and(eq(subscriptionMembers.subscriptionId, subscriptionId), eq(subscriptionMembers.userId, userId)),

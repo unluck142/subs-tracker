@@ -294,6 +294,10 @@ export class SubscriptionsService {
     };
   }
 
+  nameOf(sub: SubscriptionWithService): string {
+    return subscriptionName(sub);
+  }
+
   /** Пользователь подтвердил, что пользуется подпиской («Оставляю», «Пользуюсь») */
   async markUsed(userId: number, id: number): Promise<void> {
     const sub = await this.findOwned(userId, id);

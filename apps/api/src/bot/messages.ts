@@ -361,3 +361,17 @@ export function adminStatsText(s: AdminStatsView): string {
 export function adminAlertText(where: string, message: string): string {
   return `🚨 <b>Ошибка: ${escapeHtml(where)}</b>\n\n<code>${escapeHtml(message.slice(0, 800))}</code>`;
 }
+
+export function memberAlreadyText(sub: SubscriptionView): string {
+  const s = sub.sharing;
+  return s
+    ? `«${escapeHtml(sub.name)}» у тебя уже есть как общая подписка — её оплачивает ${escapeHtml(s.ownerName ?? 'другой участник')}. Твоя доля: ${formatRub(s.shareKopecks)}.`
+    : `«${escapeHtml(sub.name)}» у тебя уже есть как общая подписка.`;
+}
+
+export const FOREIGN_CURRENCY_TEXT =
+  'Пока я считаю подписки только в рублях. Напиши сумму в рублях — например, сколько списывает банк: <code>Spotify 499 15 числа</code>';
+
+export function sharedEndedText(name: string, ownerName: string, deleted: boolean): string {
+  return `«${escapeHtml(name)}» больше не общая подписка: ${escapeHtml(ownerName)} ${deleted ? 'удалил(а)' : 'отменил(а)'} её. Напоминаний о ней больше не будет.`;
+}

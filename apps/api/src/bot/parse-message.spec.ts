@@ -82,6 +82,20 @@ describe('подписка текстом', () => {
     expect(ok('Okko 399').nextChargeDate).toBe('2026-12-02');
   });
 
+  it('«оплатил вчера» — следующее списание через месяц от вчера', () => {
+    expect(ok('оплатил кп 299 вчера').nextChargeDate).toBe('2026-12-01');
+    expect(ok('Okko 399 спишут сегодня').nextChargeDate).toBe('2026-11-02');
+  });
+
+  it('валюта — просим сумму в рублях', () => {
+    expect(parseMessage('Spotify 4.99$', CATALOG, TODAY)).toEqual({ ok: false, reason: 'currency' });
+    expect(parseMessage('Netflix 15 USD в месяц', CATALOG, TODAY)).toEqual({ ok: false, reason: 'currency' });
+  });
+
+  it('нереальная цена — переспрашиваем', () => {
+    expect(parseMessage('Okko 1000000000', CATALOG, TODAY)).toEqual({ ok: false, reason: 'no-price', name: 'Okko' });
+  });
+
   it('без цены — просим цену', () => {
     expect(parseMessage('Okko', CATALOG, TODAY)).toEqual({ ok: false, reason: 'no-price', name: 'Okko' });
   });

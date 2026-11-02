@@ -5,6 +5,7 @@ import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { BotService } from './bot/bot.service';
 import { AlertingFilter } from './common/alerting.filter';
+import { validationExceptionFactory } from './common/validation';
 import { loadConfig } from './config';
 
 async function bootstrap() {
@@ -16,6 +17,8 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      // Ошибки проверки — по-русски: их видит пользователь в мини-приложении
+      exceptionFactory: validationExceptionFactory,
     }),
   );
   app.useGlobalFilters(new AlertingFilter(app.get(BotService), app.get(HttpAdapterHost).httpAdapter));

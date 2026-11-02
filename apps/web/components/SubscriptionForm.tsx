@@ -25,7 +25,8 @@ function initialState(props: Props) {
     const s = props.sub;
     return {
       name: s.name,
-      price: String(s.priceKopecks / 100).replace('.', ','),
+      // 129950 → «1299,50», 29900 → «299»
+      price: (s.priceKopecks % 100 === 0 ? String(s.priceKopecks / 100) : (s.priceKopecks / 100).toFixed(2)).replace('.', ','),
       periodUnit: s.periodUnit,
       periodCount: s.periodCount,
       nextChargeDate: s.nextChargeDate,

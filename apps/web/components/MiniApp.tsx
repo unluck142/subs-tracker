@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Home from '@/components/Home';
+import Home, { isHomeEmpty } from '@/components/Home';
 import ImportStatement from '@/components/ImportStatement';
 import ServicePicker from '@/components/ServicePicker';
 import { MemberSubscription } from '@/components/Sharing';
@@ -176,7 +176,8 @@ export default function MiniApp() {
             onAdd={() => setView({ name: 'picker' })}
             onImport={() => setView({ name: 'import' })}
           />
-          {(stats.activeCount > 0 || subs.length > 0) && (
+          {/* Кнопка нужна всегда, кроме пустого экрана — там своя. Даже если все подписки отменены. */}
+          {!isHomeEmpty(stats, subs) && (
             <div className="bottom-bar">
               <button className="btn" onClick={() => setView({ name: 'picker' })}>
                 + Добавить подписку
