@@ -157,14 +157,19 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
-  /** Политика конфиденциальности лежит на том же домене, что и мини-приложение */
-  private privacyUrl(): string | null {
+  /** Адрес сайта: тот же домен, что у мини-приложения (там же /privacy и /otmena) */
+  private siteUrl(): string | null {
     if (!this.config.webAppUrl) return null;
     try {
-      return `${new URL(this.config.webAppUrl).origin}/privacy`;
+      return new URL(this.config.webAppUrl).origin;
     } catch {
       return null;
     }
+  }
+
+  private privacyUrl(): string | null {
+    const site = this.siteUrl();
+    return site ? `${site}/privacy` : null;
   }
 
   /** Кнопки приветствия: сразу в приложение, к импорту выписки или подсказки, как добавить иначе */
@@ -367,12 +372,14 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
           }
           case 'howto': {
             const sub = await this.subs.findOwned(user.id, id);
-            const keyboard = sub.service?.cancelUrl
-              ? new InlineKeyboard().url('Открыть сайт сервиса', sub.service.cancelUrl)
-              : undefined;
+            const keyboard = new InlineKeyboard();
+            if (sub.service?.cancelUrl) keyboard.url('Официальная справка', sub.service.cancelUrl).row();
+            // Та же инструкция на сайте — удобно переслать или открыть на компьютере
+            const site = this.siteUrl();
+            if (site && sub.service?.cancelSteps) keyboard.url('📄 Инструкция на сайте', `${site}/otmena/${sub.service.slug}`);
             await ctx.reply(howToCancelText(sub.service?.name ?? sub.customName ?? 'подписку', sub.service?.cancelSteps ?? null), {
               parse_mode: 'HTML',
-              reply_markup: keyboard,
+              reply_markup: keyboard.inline_keyboard.some((r) => r.length > 0) ? keyboard : undefined,
               link_preview_options: { is_disabled: true },
             });
             return ctx.answerCallbackQuery();

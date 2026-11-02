@@ -697,3 +697,27 @@ button {
 .article li + li {
   margin-top: 6px;
 }
+.guide-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0 12px;
+}
+.guide-head h1 {
+  margin: 0;
+}
+.article .list {
+  margin-top: 8px;
+}
+.article .row {
+  color: inherit;
+  text-decoration: none;
+}
+.cta {
+  margin-top: 32px;
+}
+.cta .btn {
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+}

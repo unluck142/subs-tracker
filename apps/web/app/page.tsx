@@ -20,6 +20,16 @@ export default function LandingPage() {
       ) : (
         <p className="hint">Укажи NEXT_PUBLIC_BOT_USERNAME в .env, чтобы здесь появилась кнопка.</p>
       )}
+      <p style={{ marginTop: 28 }}>
+        <a href="/otmena" style={{ color: 'var(--link)' }}>
+          Как отменить подписку: инструкции для популярных сервисов →
+        </a>
+      </p>
+      <p className="hint" style={{ fontSize: 14 }}>
+        <a href="/privacy" style={{ color: 'inherit' }}>
+          Политика конфиденциальности
+        </a>
+      </p>
     </main>
   );
 }

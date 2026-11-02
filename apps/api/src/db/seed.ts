@@ -7,6 +7,7 @@ import 'dotenv/config';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { CANCEL_GUIDES } from './cancel-guides';
 import { CATALOG } from './catalog.data';
 import * as schema from './schema';
 
@@ -15,6 +16,7 @@ async function main() {
   const db = drizzle(pool, { schema });
   try {
     for (const [index, entry] of CATALOG.entries()) {
+      const guide = CANCEL_GUIDES[entry.slug];
       const values = {
         slug: entry.slug,
         name: entry.name,
@@ -26,8 +28,8 @@ async function main() {
         periodUnit: entry.periodUnit ?? 'MONTH',
         isPopular: entry.popular ?? false,
         sortOrder: index,
-        cancelUrl: entry.cancelUrl ?? null,
-        cancelSteps: entry.cancelSteps ?? null,
+        cancelUrl: guide?.url ?? entry.cancelUrl ?? null,
+        cancelSteps: guide?.steps ?? entry.cancelSteps ?? null,
       } as const;
       await db
         .insert(schema.services)

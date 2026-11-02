@@ -11,6 +11,7 @@ interface TelegramWebApp {
   expand(): void;
   showConfirm(message: string, callback: (ok: boolean) => void): void;
   openTelegramLink(url: string): void;
+  openLink(url: string): void;
   BackButton: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
   HapticFeedback?: {
     notificationOccurred(type: 'error' | 'success' | 'warning'): void;
@@ -63,6 +64,14 @@ export async function shareLink(url: string, text: string): Promise<'shared' | '
   } catch {
     return 'failed';
   }
+}
+
+/** Открыть страницу сайта: в Telegram — во встроенном браузере (мини-приложение остаётся открытым) */
+export function openPage(path: string) {
+  const url = new URL(path, window.location.origin).toString();
+  const app = webApp();
+  if (app) app.openLink(url);
+  else window.open(url, '_blank', 'noopener');
 }
 
 export function colorScheme(): 'light' | 'dark' {

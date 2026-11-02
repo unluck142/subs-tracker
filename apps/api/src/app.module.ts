@@ -5,6 +5,7 @@ import { TelegramAuthGuard } from './auth/telegram-auth.guard';
 import { BotService } from './bot/bot.service';
 import { CatalogController } from './catalog/catalog.controller';
 import { CatalogService } from './catalog/catalog.service';
+import { PublicController } from './catalog/public.controller';
 import { DbModule } from './db/db.module';
 import { RemindersService } from './reminders/reminders.service';
 import { SharingController } from './sharing/sharing.controller';
@@ -24,7 +25,7 @@ class HealthController {
 
 @Module({
   imports: [DbModule, ScheduleModule.forRoot()],
-  controllers: [HealthController, UsersController, CatalogController, SubscriptionsController, SharingController],
+  controllers: [HealthController, UsersController, CatalogController, SubscriptionsController, SharingController, PublicController],
   providers: [
     TelegramAuthGuard,
     UsersService,

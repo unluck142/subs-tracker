@@ -13,7 +13,7 @@ import {
   REMIND_OPTIONS,
   todayLocal,
 } from '@/lib/format';
-import { confirmAction, haptic } from '@/lib/telegram';
+import { confirmAction, haptic, openPage } from '@/lib/telegram';
 import type { CatalogItem, Subscription, SubscriptionInput } from '@/lib/types';
 
 type Props =
@@ -234,6 +234,11 @@ export default function SubscriptionForm(props: Props) {
 
       {sub && (
         <div className="list" style={{ marginTop: 16 }}>
+          {sub.status === 'ACTIVE' && sub.hasCancelGuide && sub.serviceSlug && (
+            <button className="btn-plain" onClick={() => openPage(`/otmena/${sub.serviceSlug}`)}>
+              📖 Как отменить {sub.name}
+            </button>
+          )}
           {sub.status === 'ACTIVE' ? (
             <button className="btn-plain" onClick={cancelSub} disabled={saving}>
               Я отменил эту подписку
