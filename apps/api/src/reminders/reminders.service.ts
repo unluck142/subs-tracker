@@ -1,12 +1,23 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { and, eq, lte } from 'drizzle-orm';
+import { and, eq, isNull, lt, lte, or } from 'drizzle-orm';
 import { BotService } from '../bot/bot.service';
 import { addDays, hourInTz, todayInTz } from '../common/dates';
 import { DB, Db } from '../db/db.module';
-import { reminderLogs, services, subscriptions, users } from '../db/schema';
+import { reminderLogs, services, Subscription, subscriptions, users } from '../db/schema';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { isReminderDue } from './reminders.logic';
+import { isUserReviewDue, pickForReview, REVIEW_EVERY_DAYS } from './review.logic';
+
+/** Поля проверки пользования, которых нет в SubscriptionView */
+function pick(row: Subscription) {
+  return {
+    createdAt: row.createdAt,
+    lastReviewedAt: row.lastReviewedAt,
+    usageConfirmedAt: row.usageConfirmedAt,
+    reviewMuted: row.reviewMuted,
+  };
+}
 
 /** Максимум remindDaysBefore (30) + запас на разницу часовых поясов */
 const LOOKAHEAD_DAYS = 32;
@@ -27,15 +38,82 @@ export class RemindersService {
     if (!this.bot.enabled || this.running) return;
     this.running = true;
     try {
-      const stats = await this.processDue(new Date());
+      const now = new Date();
+      const stats = await this.processDue(now);
       if (stats.sent > 0 || stats.failed > 0) {
         this.logger.log(`Напоминания: отправлено ${stats.sent}, ошибок ${stats.failed}`);
       }
+      const reviews = await this.processReviews(now);
+      if (reviews > 0) this.logger.log(`Проверка пользования: отправлено вопросов ${reviews}`);
     } catch (e) {
       this.logger.error(`Ошибка при рассылке напоминаний: ${(e as Error).message}`, (e as Error).stack);
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * Раз в неделю спросить пользователя про одну подписку: «Ты ей пользуешься?»
+   * Возвращает, сколько вопросов отправлено.
+   */
+  async processReviews(now: Date): Promise<number> {
+    const weekAgo = new Date(now.getTime() - REVIEW_EVERY_DAYS * 86_400_000);
+    const candidates = await this.db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.reviewsEnabled, true),
+          eq(users.botBlocked, false),
+          or(isNull(users.lastReviewAt), lt(users.lastReviewAt, weekAgo)),
+        ),
+      );
+
+    let sent = 0;
+    for (const user of candidates) {
+      const due = isUserReviewDue({
+        reviewsEnabled: user.reviewsEnabled,
+        lastReviewAt: user.lastReviewAt,
+        now,
+        localHour: hourInTz(user.timezone, now),
+        reminderHour: user.reminderHour,
+      });
+      if (!due) continue;
+
+      // «Бронируем» неделю: даже если спросить не о чем, следующая проверка — через неделю.
+      // Условие в WHERE не даст двум экземплярам приложения спросить дважды.
+      const reserved = await this.db
+        .update(users)
+        .set({ lastReviewAt: now })
+        .where(and(eq(users.id, user.id), or(isNull(users.lastReviewAt), lt(users.lastReviewAt, weekAgo))))
+        .returning({ id: users.id });
+      if (reserved.length === 0) continue;
+
+      const today = todayInTz(user.timezone, now);
+      const views = await this.subs.list(user);
+      const rows = await this.db.query.subscriptions.findMany({ where: eq(subscriptions.userId, user.id) });
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const picked = pickForReview(
+        views.flatMap((v) => {
+          const row = byId.get(v.id);
+          return row ? [{ ...v, ...pick(row), monthlyKopecks: v.monthlyKopecks, nextChargeDate: v.nextChargeDate }] : [];
+        }),
+        today,
+        now,
+      );
+      if (!picked) continue;
+
+      const view = views.find((v) => v.id === picked.id)!;
+      const result = await this.bot.sendReview(user, view);
+      if (result === 'sent') {
+        sent++;
+        await this.db.update(subscriptions).set({ lastReviewedAt: now }).where(eq(subscriptions.id, view.id));
+      } else if (result === 'failed') {
+        // Сеть — вернём пользователя в очередь, спросим в следующий раз
+        await this.db.update(users).set({ lastReviewAt: user.lastReviewAt }).where(eq(users.id, user.id));
+      }
+    }
+    return sent;
   }
 
   /**

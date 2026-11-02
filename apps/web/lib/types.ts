@@ -18,6 +18,7 @@ export interface Me {
   username: string | null;
   timezone: string;
   reminderHour: number;
+  reviewsEnabled: boolean;
   isPremium: boolean;
 }
 

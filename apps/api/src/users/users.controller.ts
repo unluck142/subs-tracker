@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser, TelegramAuthGuard } from '../auth/telegram-auth.guard';
 import type { User } from '../db/schema';
 import { UsersService } from './users.service';
@@ -15,6 +15,10 @@ class UpdateSettingsDto {
   @Min(0)
   @Max(23)
   reminderHour?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  reviewsEnabled?: boolean;
 }
 
 function toDto(user: User) {
@@ -24,6 +28,7 @@ function toDto(user: User) {
     username: user.username,
     timezone: user.timezone,
     reminderHour: user.reminderHour,
+    reviewsEnabled: user.reviewsEnabled,
     isPremium: user.isPremium,
   };
 }

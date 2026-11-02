@@ -217,3 +217,34 @@ export const ADD_BY_TEXT_HINT = [
 ].join('\n');
 
 export const DRAFT_EXPIRED_TEXT = 'Это сообщение устарело — пришли подписку ещё раз.';
+
+// ─── Проверка пользования ───────────────────────────────────────────────────
+
+function yearlyKopecks(sub: SubscriptionView): number {
+  return Math.round(sub.monthlyKopecks * 12);
+}
+
+export function reviewText(sub: SubscriptionView): string {
+  return [
+    '🔍 <b>Ревизия подписок</b>',
+    '',
+    `Ты пользовался <b>${escapeHtml(sub.name)}</b> в последний месяц?`,
+    `Она стоит ${formatRub(sub.priceKopecks)} ${periodLabel(sub.periodUnit, sub.periodCount)} — это <b>${formatRub(yearlyKopecks(sub))} в год</b>.`,
+  ].join('\n');
+}
+
+export function reviewUsedText(sub: SubscriptionView): string {
+  return `👍 Отлично, значит «${escapeHtml(sub.name)}» того стоит. Спрошу о ней снова через пару месяцев.`;
+}
+
+export function reviewUnusedText(sub: SubscriptionView): string {
+  return [
+    `Тогда «${escapeHtml(sub.name)}» лучше отменить — это <b>${formatRub(yearlyKopecks(sub))} в год</b> впустую.`,
+    '',
+    `Следующее списание — ${formatDateLong(sub.nextChargeDate)}: успей до него. Как отменишь — нажми «Отменил».`,
+  ].join('\n');
+}
+
+export function reviewMutedText(sub: SubscriptionView): string {
+  return `🔕 Хорошо, про «${escapeHtml(sub.name)}» больше не спрашиваю. Выключить такие вопросы совсем можно в настройках приложения.`;
+}

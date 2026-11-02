@@ -178,6 +178,18 @@ export class SubscriptionsService {
     };
   }
 
+  /** Пользователь подтвердил, что пользуется подпиской («Оставляю», «Пользуюсь») */
+  async markUsed(userId: number, id: number): Promise<void> {
+    const sub = await this.findOwned(userId, id);
+    await this.db.update(subscriptions).set({ usageConfirmedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+  }
+
+  /** «Не спрашивай про неё» в проверке пользования */
+  async muteReview(userId: number, id: number): Promise<void> {
+    const sub = await this.findOwned(userId, id);
+    await this.db.update(subscriptions).set({ reviewMuted: true }).where(eq(subscriptions.id, sub.id));
+  }
+
   /** Активная подписка на тот же сервис (или своя с таким же названием) — чтобы не завести дубль */
   async findActiveMatch(user: User, serviceId: number | null, name: string): Promise<SubscriptionView | null> {
     const active = await this.list(user);

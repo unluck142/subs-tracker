@@ -53,6 +53,9 @@ export const users = pgTable('users', {
   // Пользователь заблокировал бота — не шлём напоминания, пока снова не напишет /start
   botBlocked: boolean('bot_blocked').notNull().default(false),
   isPremium: boolean('is_premium').notNull().default(false),
+  // Раз в неделю спрашиваем, пользуется ли он одной из подписок. Можно выключить в настройках.
+  reviewsEnabled: boolean('reviews_enabled').notNull().default(true),
+  lastReviewAt: timestamp('last_review_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -107,6 +110,10 @@ export const subscriptions = pgTable(
     // За сколько дней напоминать (0 — в день списания)
     remindDaysBefore: integer('remind_days_before').notNull().default(1),
     status: subscriptionStatusEnum('status').notNull().default('ACTIVE'),
+    // Проверка пользования: когда спрашивали, когда ответил «пользуюсь», не спрашивать больше
+    lastReviewedAt: timestamp('last_reviewed_at', { withTimezone: true }),
+    usageConfirmedAt: timestamp('usage_confirmed_at', { withTimezone: true }),
+    reviewMuted: boolean('review_muted').notNull().default(false),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

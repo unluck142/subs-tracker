@@ -20,6 +20,10 @@ import {
   HELP_TEXT,
   priceChangedText,
   priceUpdatedText,
+  reviewMutedText,
+  reviewText,
+  reviewUnusedText,
+  reviewUsedText,
   howToCancelText,
   keepText,
   listText,
@@ -137,6 +141,7 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       try {
         switch (action) {
           case 'keep': {
+            await this.subs.markUsed(user.id, id);
             const sub = await this.subs.get(user, id);
             await ctx.editMessageText(keepText(sub), { parse_mode: 'HTML' });
             return ctx.answerCallbackQuery({ text: 'Оставляем 👌' });
@@ -174,6 +179,32 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
           return ctx.answerCallbackQuery();
         }
         this.logger.warn(`Кнопка ${action}:${id} не сработала: ${(e as Error).message}`);
+        return ctx.answerCallbackQuery({ text: 'Подписка не найдена — возможно, её уже удалили' });
+      }
+    });
+
+    // Ответы на проверку пользования: rv:use|no|mute:ID
+    bot.callbackQuery(/^rv:(use|no|mute):(\d+)$/, async (ctx) => {
+      const [, action, idRaw] = ctx.match;
+      const user = await this.userFromCtx(ctx);
+      if (!user) return ctx.answerCallbackQuery();
+      const id = Number(idRaw);
+      try {
+        const sub = await this.subs.get(user, id);
+        if (action === 'use') {
+          await this.subs.markUsed(user.id, id);
+          await ctx.editMessageText(reviewUsedText(sub), { parse_mode: 'HTML' });
+        } else if (action === 'mute') {
+          await this.subs.muteReview(user.id, id);
+          await ctx.editMessageText(reviewMutedText(sub), { parse_mode: 'HTML' });
+        } else {
+          await ctx.editMessageText(reviewUnusedText(sub), {
+            parse_mode: 'HTML',
+            reply_markup: new InlineKeyboard().text('📖 Как отменить', `howto:${id}`).text('✅ Отменил', `cancel:${id}`),
+          });
+        }
+        return ctx.answerCallbackQuery();
+      } catch {
         return ctx.answerCallbackQuery({ text: 'Подписка не найдена — возможно, её уже удалили' });
       }
     });
@@ -281,6 +312,32 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     return this.users.upsertFromTelegram(ctx.from);
   }
 
+  /** Спросить, пользуется ли он подпиской */
+  async sendReview(user: User, sub: SubscriptionView): Promise<SendResult> {
+    const keyboard = new InlineKeyboard()
+      .text('👍 Пользуюсь', `rv:use:${sub.id}`)
+      .text('👎 Нет', `rv:no:${sub.id}`)
+      .row()
+      .text('🔕 Не спрашивай про неё', `rv:mute:${sub.id}`);
+    return this.send(user, reviewText(sub), keyboard, `проверку ${sub.id}`);
+  }
+
+  private async send(user: User, text: string, keyboard: InlineKeyboard, what: string): Promise<SendResult> {
+    if (!this.bot) return 'failed';
+    try {
+      await this.bot.api.sendMessage(user.telegramId, text, { parse_mode: 'HTML', reply_markup: keyboard });
+      return 'sent';
+    } catch (e) {
+      // 403 — пользователь заблокировал бота
+      if (e instanceof GrammyError && e.error_code === 403) {
+        await this.users.markBotBlocked(user.id, true);
+        return 'blocked';
+      }
+      this.logger.warn(`Не удалось отправить ${what}: ${(e as Error).message}`);
+      return 'failed';
+    }
+  }
+
   /** Отправить напоминание о списании. Возвращает результат, чтобы планировщик мог повторить попытку. */
   async sendReminder(user: User, sub: SubscriptionView): Promise<SendResult> {
     if (!this.bot) return 'failed';
@@ -291,20 +348,6 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       .text('📖 Как отменить', `howto:${sub.id}`);
     if (this.config.webAppUrl) keyboard.row().webApp('📱 Все подписки', this.config.webAppUrl);
 
-    try {
-      await this.bot.api.sendMessage(user.telegramId, reminderText(sub), {
-        parse_mode: 'HTML',
-        reply_markup: keyboard,
-      });
-      return 'sent';
-    } catch (e) {
-      // 403 — пользователь заблокировал бота
-      if (e instanceof GrammyError && e.error_code === 403) {
-        await this.users.markBotBlocked(user.id, true);
-        return 'blocked';
-      }
-      this.logger.warn(`Не удалось отправить напоминание ${sub.id}: ${(e as Error).message}`);
-      return 'failed';
-    }
+    return this.send(user, reminderText(sub), keyboard, `напоминание ${sub.id}`);
   }
 }
